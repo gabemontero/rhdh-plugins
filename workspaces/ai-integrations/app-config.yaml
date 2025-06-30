@@ -91,6 +91,13 @@ scaffolder:
   {}
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
 
+mcp:
+  registry:
+    proxy:
+      - id: 'mcp-registry-on-laptop'
+        baseUrl: 'http://localhost:8080'
+        registryVersion: 'v0'
+
 catalog:
   import:
     entityFilename: catalog-info.yaml
