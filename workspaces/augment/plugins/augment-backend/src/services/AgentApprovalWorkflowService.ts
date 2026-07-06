@@ -129,7 +129,8 @@ export class AgentApprovalWorkflowService {
       data: { approved, decidedBy, reason },
     };
 
-    const url = `${this.config.serviceUrl}/${this.config.workflowId}/${instanceId}`;
+    // CloudEvents go to the SonataFlow root — kogitoprocrefid routes to the correct instance
+    const url = `${this.config.serviceUrl}`;
     try {
       const response = await fetch(url, {
         method: 'POST',
