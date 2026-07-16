@@ -125,7 +125,9 @@ export class LlamaStackModel implements Model {
     const input =
       typeof request.input === 'string'
         ? request.input
-        : (request.input as unknown as ResponsesApiInputItem[]);
+        : (mapInputItemsToWireFormat(
+            request.input as unknown as Array<Record<string, unknown>>,
+          ) as unknown as ResponsesApiInputItem[]);
 
     const instructions = request.systemInstructions ?? '';
 
@@ -184,7 +186,11 @@ export class LlamaStackModel implements Model {
 
     if (result.output) {
       for (const item of result.output) {
-        output.push(item as unknown as ModelResponse['output'][0]);
+        output.push(
+          mapSnakeToCamel(
+            item as unknown as Record<string, unknown>,
+          ) as unknown as ModelResponse['output'][0],
+        );
       }
     } else if (typeof resultAny.content === 'string' && resultAny.content) {
       output.push({
@@ -240,7 +246,7 @@ export class LlamaStackModel implements Model {
                   (parsed.response?.usage?.input_tokens ?? 0) +
                   (parsed.response?.usage?.output_tokens ?? 0),
               },
-              output: parsed.response?.output ?? [],
+              output: mapOutputItems(parsed.response?.output ?? []),
             },
           };
 
@@ -267,4 +273,77 @@ export class LlamaStackModel implements Model {
       return null;
     }
   }
+}
+
+export function mapSnakeToCamel(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  if (item.call_id !== undefined && item.callId === undefined) {
+    item.callId = item.call_id;
+  }
+  return item;
+}
+
+export function mapOutputItems(
+  items: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return items.map(mapSnakeToCamel);
+}
+
+/**
+ * Convert a single input item from the @openai/agents-core internal
+ * format (camelCase) to the OpenAI Responses API wire format
+ * (snake_case) that Llama Stack expects.
+ *
+ * The SDK stores items with camelCase keys and extra fields
+ * (name, status, namespace, providerData, structured output objects).
+ * Llama Stack's Pydantic models use strict validation, so any
+ * unrecognised field causes the entire tagged-union match to fail.
+ */
+export function mapInputItemToWireFormat(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  if (item.callId !== undefined && item.call_id === undefined) {
+    item.call_id = item.callId;
+  }
+  delete item.callId;
+
+  if (item.type === 'function_call_result') {
+    item.type = 'function_call_output';
+  }
+
+  if (item.type === 'function_call_output') {
+    if (
+      item.output !== null &&
+      item.output !== undefined &&
+      typeof item.output === 'object'
+    ) {
+      const out = item.output as Record<string, unknown>;
+      if (out.type === 'text' && typeof out.text === 'string') {
+        item.output = out.text;
+      } else if (Array.isArray(item.output)) {
+        item.output = (item.output as Array<Record<string, unknown>>)
+          .map(o =>
+            o.type === 'text' && typeof o.text === 'string'
+              ? (o.text as string)
+              : JSON.stringify(o),
+          )
+          .join('\n');
+      } else {
+        item.output = JSON.stringify(item.output);
+      }
+    }
+    delete item.name;
+    delete item.status;
+  }
+
+  delete item.namespace;
+  delete item.providerData;
+  return item;
+}
+
+export function mapInputItemsToWireFormat(
+  items: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return items.map(mapInputItemToWireFormat);
 }

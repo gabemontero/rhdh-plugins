@@ -129,7 +129,7 @@ export function handleOutputItemAdded(
       return [
         {
           type: 'stream.tool.started',
-          callId: item.id ?? '',
+          callId: item.call_id ?? item.id ?? '',
           name: item.name ?? '',
           serverLabel: item.server_label,
         },
@@ -186,7 +186,7 @@ function mapToolCallResult(
     else errorStr = String(error ?? '');
     return {
       type: 'stream.tool.failed',
-      callId: (item.id as string) ?? '',
+      callId: (item.call_id as string) ?? (item.id as string) ?? '',
       name: (item.name as string) ?? '',
       serverLabel: item.server_label as string | undefined,
       error: errorStr,
@@ -194,7 +194,7 @@ function mapToolCallResult(
   }
   return {
     type: 'stream.tool.completed',
-    callId: (item.id as string) ?? '',
+    callId: (item.call_id as string) ?? (item.id as string) ?? '',
     name: (item.name as string) ?? '',
     serverLabel: item.server_label as string | undefined,
     output: stringifyOutput(item.output),

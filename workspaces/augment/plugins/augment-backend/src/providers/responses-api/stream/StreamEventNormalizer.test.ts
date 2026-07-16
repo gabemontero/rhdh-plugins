@@ -253,6 +253,26 @@ describe('normalizeLlamaStackEvent', () => {
       ]);
     });
 
+    it('prefers call_id over id for function_call items', () => {
+      const raw = JSON.stringify({
+        type: 'response.output_item.added',
+        item: {
+          id: 'fc_internal',
+          call_id: 'call_abc123',
+          type: 'function_call',
+          name: 'get_weather',
+        },
+      });
+      expect(normalizeLlamaStackEvent(raw)).toEqual([
+        {
+          type: 'stream.tool.started',
+          callId: 'call_abc123',
+          name: 'get_weather',
+          serverLabel: undefined,
+        },
+      ]);
+    });
+
     it('normalizes tool arguments delta', () => {
       const raw = JSON.stringify({
         type: 'response.function_call_arguments.delta',
@@ -370,6 +390,50 @@ describe('normalizeLlamaStackEvent', () => {
           name: 'tool',
           serverLabel: undefined,
           error: 'crashed',
+        },
+      ]);
+    });
+
+    it('prefers call_id over id for completed function_call in output_item.done', () => {
+      const raw = JSON.stringify({
+        type: 'response.output_item.done',
+        item: {
+          id: 'fc_internal',
+          call_id: 'call_abc123',
+          type: 'function_call',
+          name: 'get_weather',
+          output: '{"temp": 72}',
+        },
+      });
+      expect(normalizeLlamaStackEvent(raw)).toEqual([
+        {
+          type: 'stream.tool.completed',
+          callId: 'call_abc123',
+          name: 'get_weather',
+          serverLabel: undefined,
+          output: '{"temp": 72}',
+        },
+      ]);
+    });
+
+    it('prefers call_id over id for failed function_call in output_item.done', () => {
+      const raw = JSON.stringify({
+        type: 'response.output_item.done',
+        item: {
+          id: 'fc_internal',
+          call_id: 'call_abc123',
+          type: 'function_call',
+          name: 'get_weather',
+          error: 'timeout',
+        },
+      });
+      expect(normalizeLlamaStackEvent(raw)).toEqual([
+        {
+          type: 'stream.tool.failed',
+          callId: 'call_abc123',
+          name: 'get_weather',
+          serverLabel: undefined,
+          error: 'timeout',
         },
       ]);
     });
