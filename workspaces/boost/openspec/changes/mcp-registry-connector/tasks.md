@@ -40,7 +40,7 @@
 - [ ] 2.9 Add preservation logic: do not overwrite existing AI Asset annotations
 - [ ] 2.10 Add DEBUG-level logging for enriched entities
 - [ ] 2.11 Register processor with catalog processing extension point in Boost backend plugin
-- [ ] 2.12 Integrate with RHDHPLAN-1507's SDK validation layer
+- [ ] 2.12 Integrate with RHDHPLAN-1507's SDK validation layer: import `AIAssetValidator` from SDK, ensure it runs in the catalog processing chain after `McpServerAnnotationProcessor`, handle validation warnings without blocking ingestion
 - [ ] 2.13 Add Prometheus metrics for enrichment success/failure rate
 - [ ] 2.14 Add Prometheus metrics for enrichment latency (p50, p95, p99)
 - [ ] 2.15 Write unit test: annotation population with all required fields

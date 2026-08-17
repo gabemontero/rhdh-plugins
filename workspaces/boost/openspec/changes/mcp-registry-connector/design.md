@@ -59,7 +59,7 @@ metadata:
   annotations:
     rhdh.io/ai-asset-category: mcp-server
     rhdh.io/ai-asset-version: '1.2.3'
-    rhdh.io/ai-asset-source: catalog-info/default
+    rhdh.io/ai-asset-source: catalog-info/my-namespace
 spec:
   type: mcp-server
   lifecycle: production
@@ -83,16 +83,16 @@ spec:
 
 **Rejected because:** Error-prone, inconsistent annotation values, no enforcement of annotation presence.
 
-**Implementation pattern:**
+**Implementation pattern:** See `enrichWithAiAssetAnnotations()` in Decision 4. The processor delegates to that function:
 
 ```typescript
 // plugins/boost-backend/src/processors/McpServerAnnotationProcessor.ts
 import {
   CatalogProcessor,
   CatalogProcessorEmit,
+  LocationSpec,
 } from '@backstage/plugin-catalog-node';
 import { Entity } from '@backstage/catalog-model';
-import { normalizeAIAssetVersion } from '@red-hat-developer-hub/backstage-plugin-boost-common';
 
 export class McpServerAnnotationProcessor implements CatalogProcessor {
   getProcessorName(): string {
@@ -107,26 +107,7 @@ export class McpServerAnnotationProcessor implements CatalogProcessor {
     if (entity.spec?.type !== 'mcp-server') {
       return entity;
     }
-
-    const annotations = entity.metadata.annotations ?? {};
-
-    return {
-      ...entity,
-      metadata: {
-        ...entity.metadata,
-        annotations: {
-          'rhdh.io/ai-asset-category':
-            annotations['rhdh.io/ai-asset-category'] ?? 'mcp-server',
-          'rhdh.io/ai-asset-version':
-            annotations['rhdh.io/ai-asset-version'] ??
-            normalizeAIAssetVersion(entity.spec?.version as string) ??
-            'unknown',
-          'rhdh.io/ai-asset-source':
-            annotations['rhdh.io/ai-asset-source'] ?? 'catalog-info/default',
-          ...annotations,
-        },
-      },
-    };
+    return enrichWithAiAssetAnnotations(entity);
   }
 }
 ```
@@ -172,8 +153,8 @@ metadata:
     # Version metadata (from catalog-info.yaml or "unknown" if not specified)
     rhdh.io/ai-asset-version: '1.0.0'
 
-    # Source identifier — "catalog-info/<namespace>" for catalog-info.yaml-sourced entities
-    rhdh.io/ai-asset-source: catalog-info/default
+    # Source identifier — "catalog-info/<namespace>" where <namespace> is the entity's metadata.namespace
+    rhdh.io/ai-asset-source: catalog-info/my-namespace
 ```
 
 **Enrichment logic:**

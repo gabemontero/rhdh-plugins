@@ -71,7 +71,7 @@
 - [ ] 6.4 Include OCI Skill connector example: multi-registry config, pull secret, namespace filtering
 - [ ] 6.5 Document each config field with inline comments explaining purpose and valid values
 - [ ] 6.6 Add air-gapped deployment variant showing zero-internet configuration
-- [ ] 6.7 Place reference YAML in `workspaces/boost/examples/` or alongside connector README files
+- [ ] 6.7 Place reference YAML at `workspaces/boost/examples/app-config.connectors.yaml` and reference from connector README files
 
 ## ~~7. Connector Integration (P2) — deferred~~
 

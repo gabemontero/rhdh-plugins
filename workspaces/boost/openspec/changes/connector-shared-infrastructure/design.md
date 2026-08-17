@@ -35,7 +35,7 @@ The shared infrastructure lives in a standalone utility package (`@red-hat-devel
 plugins/boost-connector-utils/
 ├── package.json               # @red-hat-developer-hub/backstage-plugin-boost-connector-utils
 ├── src/
-│   ├── index.ts              # Exports: loadCaBundle, createHttpsAgent, createProviderWrapper, createSafeRefresh, classifyConnectorError, isConnectorEnabled, validateConnectorStartupConfig, ConnectorEntityProvider, ConnectorErrorContext, ValidateConnectorStartupConfigOptions
+│   ├── index.ts              # Exports: loadCaBundle, createHttpsAgent, createProviderWrapper, createSafeRefresh, classifyConnectorError, isConnectorEnabled, validateConnectorStartupConfig, ConnectorEntityProvider, ConnectorErrorContext, FaultIsolationContext, ValidateConnectorStartupConfigOptions
 │   ├── ca-bundle.ts          # CA bundle loading logic
 │   ├── fault-isolation.ts    # Provider wrapper with error handling
 │   └── config.ts             # Enable/disable guard
@@ -127,10 +127,14 @@ Backstage already provides entity data isolation per provider via entity buckets
 
 ```typescript
 // In boost-connector-utils/src/fault-isolation.ts
+interface FaultIsolationContext {
+  endpoint?: string;
+}
+
 export function createProviderWrapper(
   provider: ConnectorEntityProvider,
   logger: LoggerService,
-  ctx?: { endpoint?: string },
+  ctx?: FaultIsolationContext,
 ): ConnectorEntityProvider {
   return {
     getProviderName: () => provider.getProviderName(),
@@ -245,7 +249,7 @@ logger.error('Failed to fetch MCP servers from RHOAI', {
   endpoint: 'https://rhoai.example.com/api/mcp/v1/servers',
   errorType: error.constructor.name,
   errorMessage: error.message,
-  retryable: isRetryableError(error),
+  retryable: classifyConnectorError(error).retryable,
   nextRetryAt: nextRetryTime.toISOString(),
 });
 ```

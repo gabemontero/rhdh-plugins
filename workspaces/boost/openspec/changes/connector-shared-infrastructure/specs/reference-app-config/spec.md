@@ -41,8 +41,11 @@ The reference YAML must demonstrate RHOAI connector configuration fields.
               name: rhoai-mcp-catalog-secret
               namespace: rhdh
           tls:
-            # Custom CA for internal/self-signed certificates
+            # Option 1: Custom CA from mounted file path
             caFile: /etc/rhdh/ca-bundles/rhoai-ca.pem
+            # Option 2: Custom CA from K8s Secret via environment variable
+            # caSecret:
+            #   $env: RHOAI_CA_BUNDLE
   ```
 - **AND** the `enabled` field is documented with its default value (`true`)
 - **AND** the `auth.secretRef` format documents both `name` and `namespace` fields
