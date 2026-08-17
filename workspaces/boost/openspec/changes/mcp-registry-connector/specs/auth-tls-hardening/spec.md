@@ -1,216 +1,83 @@
-# TLS and Credential Hardening
+# Authentication and Access Control — Backstage Git Integration
 
 > **Status: Draft** — Pre-implementation specification.
 >
-> **Cross-connector dependencies:** RHIDP-15318 is blocked by RHIDP-15265 (endpoint/credential config schema) and RHIDP-15329 (shared CA bundle utility) from RHIDP-15316 (Cross-Connector Shared Infrastructure). The shared `loadCaBundle()` utility and K8s Secret credential patterns must be implemented in RHIDP-15316 before this spec's requirements can be fulfilled.
+> **Replaces TLS/auth hardening spec:** The original RHIDP-15318 spec covered custom CA bundles and K8s Secret auth for polling the MCP Registry API. With the shift to catalog-info.yaml-based ingestion, connector-specific TLS and credential management are no longer needed. Authentication for Git repository access is handled by Backstage's existing GitHub/GitLab integrations.
 
 ## Description
 
-The MCP Registry connector must support custom TLS certificate authorities and Kubernetes Secret-based authentication for private/authenticated registries. This enables deployment against mirrored registries with non-public CA certificates and credential-protected endpoints.
+MCP server entities are defined in catalog-info.yaml files hosted in Git repositories. Access to these repositories — including private repos in air-gapped environments — is handled by Backstage's built-in GitHub, GitLab, and Bitbucket integration authentication. No MCP-specific TLS or credential configuration is required.
 
-This specification covers RHIDP-15318: MCP Registry custom CA bundle and K8s Secret auth.
+RHIDP-15318 is **descoped** from RHIDP-15313. The original story's concerns are addressed as follows:
+
+| Original RHIDP-15318 Concern             | Resolution                                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Custom CA bundles for private registries | Backstage GitHub/GitLab integrations support custom CA via `integrations.github[].apiBaseUrl` and system CA trust |
+| K8s Secret-based credentials             | Backstage integrations use GitHub Apps or personal access tokens configured in app-config                         |
+| Per-connector TLS isolation              | Not applicable — each catalog location uses its integration's auth independently                                  |
+| Credential caching and rotation          | Backstage handles token refresh for GitHub App integrations                                                       |
 
 ## EXISTING Requirements
 
-None — this is a new productization wrapper around the upstream MCP Registry entity provider (RHDHPLAN-393).
+None.
 
 ## ADDED Requirements
 
-### Requirement: Custom CA Bundle from Mounted Path
+### Requirement: No MCP-Specific Auth Configuration
 
-**WHEN** the connector is configured with a custom CA bundle path:
+**WHEN** MCP server entities are defined in catalog-info.yaml files in Git repositories:
+
+**THEN** no MCP-specific authentication configuration is required in `ai-catalog.providers`.
+
+**AND** access to the Git repositories is authenticated through Backstage's `integrations.github` or `integrations.gitlab` configuration.
+
+**AND** the same integration configuration that grants access to other catalog entities in those repositories also grants access to MCP server entities.
+
+---
+
+### Requirement: Private Repository Support
+
+**WHEN** MCP server catalog-info.yaml files are hosted in private Git repositories:
+
+**THEN** the repositories are accessible using Backstage's configured Git integration tokens (GitHub App, PAT, or GitLab token).
+
+**AND** no additional credential configuration is needed beyond what Backstage requires for general catalog discovery.
+
+---
+
+### Requirement: Air-Gapped Git Repository Support
+
+**WHEN** RHDH is deployed in an air-gapped environment with an internal Git server (GitHub Enterprise, GitLab self-managed):
+
+**THEN** the internal Git server is configured as a Backstage integration:
 
 ```yaml
-ai-catalog:
-  providers:
-    mcpRegistry:
-      endpoint: https://registry.internal.example.com
-      tls:
-        caFile: /etc/ssl/certs/custom-ca-bundle.crt
+integrations:
+  github:
+    - host: github.internal.example.com
+      apiBaseUrl: https://github.internal.example.com/api/v3
+      token: ${GITHUB_TOKEN}
 ```
 
-**THEN** the connector loads the CA bundle from the specified file path using the shared `loadCaBundle()` utility from RHIDP-15316.
-
-**AND** the connector uses the CA bundle to validate TLS certificates when making HTTPS requests to the registry endpoint.
-
-**AND** the connector enforces TLS certificate validation (`rejectUnauthorized: true`).
-
-**AND** the connector logs the CA bundle path and validation status at startup.
-
----
-
-**WHEN** the CA bundle file path is invalid or the file does not exist:
-
-**THEN** the connector logs a WARNING-level message indicating the invalid path.
-
-**AND** the connector falls back to the system CA bundle (Node.js default trusted CAs).
-
-**AND** the connector continues operation with system CA bundle (degraded TLS configuration).
-
-**AND** the warning message includes the invalid path and remediation steps.
-
----
-
-**WHEN** the CA bundle file is unreadable (permissions issue):
-
-**THEN** the connector logs a WARNING-level message indicating the file is unreadable.
-
-**AND** the connector falls back to the system CA bundle.
-
-**AND** the warning message includes the file path and permission error details.
-
----
-
-**WHEN** the CA bundle file contains malformed PEM data:
-
-**THEN** the connector logs a WARNING-level message indicating the malformed PEM data.
-
-**AND** the connector falls back to the system CA bundle.
-
-**AND** the warning message includes the file path and PEM parsing error details.
-
-### Requirement: Kubernetes Secret-Based Credentials
-
-**WHEN** the connector is configured with a Kubernetes Secret reference for authentication:
+**AND** catalog locations point to the internal Git server:
 
 ```yaml
-ai-catalog:
-  providers:
-    mcpRegistry:
-      endpoint: https://registry.internal.example.com
-      auth:
-        secretRef: mcp-registry-credentials
+catalog:
+  locations:
+    - type: url
+      target: https://github.internal.example.com/my-org/mcp-servers/blob/main/catalog-info.yaml
 ```
 
-**THEN** the connector reads the Secret from the Kubernetes API using the Backstage Kubernetes client.
-
-**AND** the connector extracts credentials from the Secret data (keys: `username`, `password`, or `token`).
-
-**AND** the connector uses HTTP Basic Auth (username/password) or Bearer token authentication per the Secret contents.
-
-**AND** the connector caches the Secret data with a 5-minute TTL to reduce Kubernetes API load.
+**AND** TLS certificate trust for the internal Git server is configured at the system/Node.js level, not per-connector.
 
 ---
 
-**WHEN** the Kubernetes Secret does not exist:
+### Requirement: Documentation of Auth Setup
 
-**THEN** the connector logs an ERROR-level message indicating the missing Secret.
+**WHEN** a deployer sets up MCP server entity ingestion:
 
-**AND** the connector fails to start (authentication is required but not available).
+**THEN** documentation references Backstage's existing integration configuration guides.
 
-**AND** the error message includes the Secret name and namespace.
+**AND** documentation provides example configurations for GitHub Enterprise and GitLab self-managed in air-gapped environments.
 
-**AND** the error message includes remediation steps for creating the Secret.
-
-> **Rationale (fail-fast vs. graceful degradation):** The MCP Registry connector fails to start on missing Secret because `auth.secretRef` is explicitly configured by the admin — a missing Secret indicates a deployment error that should be surfaced immediately. This differs from the RHOAI connector's graceful degradation (see `rhoai-connector/specs/deployment-config`), where the MCP catalog API is developer-preview and may not exist on older RHOAI versions; retrying on next refresh cycle is the correct behavior there.
-
----
-
-**WHEN** the Kubernetes Secret exists but does not contain required keys (`username`/`password` or `token`):
-
-**THEN** the connector logs an ERROR-level message indicating the missing credential keys.
-
-**AND** the connector fails to start.
-
-**AND** the error message includes the Secret name, namespace, and missing keys.
-
-**AND** the error message includes an example Secret manifest with correct keys.
-
----
-
-**WHEN** the connector uses cached Secret credentials and receives an HTTP 401 Unauthorized response:
-
-**THEN** the connector invalidates the cached Secret data.
-
-**AND** the connector re-fetches the Secret from the Kubernetes API.
-
-**AND** the connector retries the HTTP request with fresh credentials (max 1 retry).
-
-**AND** if the retry fails, the connector logs an ERROR-level message indicating authentication failure.
-
-### Requirement: Per-Connector TLS Configuration
-
-**WHEN** multiple MCP Registry connector instances are configured with different TLS settings:
-
-```yaml
-ai-catalog:
-  providers:
-    mcpRegistryPrimary:
-      endpoint: https://registry-primary.internal.example.com
-      tls:
-        caFile: /etc/ssl/certs/primary-ca-bundle.crt
-    mcpRegistrySecondary:
-      endpoint: https://registry-secondary.internal.example.com
-      tls:
-        caFile: /etc/ssl/certs/secondary-ca-bundle.crt
-```
-
-**THEN** each connector instance uses its own CA bundle independently.
-
-**AND** TLS validation for `mcpRegistryPrimary` requests uses only the primary CA bundle.
-
-**AND** TLS validation for `mcpRegistrySecondary` requests uses only the secondary CA bundle.
-
-**AND** connector instances do not share CA bundles or TLS configuration state.
-
-### Requirement: TLS Certificate Validation Enforcement
-
-**WHEN** the connector makes HTTPS requests to the registry endpoint:
-
-**THEN** the connector always enforces TLS certificate validation (`rejectUnauthorized: true`).
-
-**AND** the connector does NOT allow disabling TLS validation via configuration.
-
-**AND** the connector logs a FATAL error if TLS validation fails (invalid certificate, expired certificate, hostname mismatch).
-
-**AND** the connector does NOT fall back to HTTP when HTTPS fails.
-
----
-
-**WHEN** the registry endpoint returns an invalid TLS certificate (self-signed, expired, hostname mismatch):
-
-**THEN** the connector logs an ERROR-level message with certificate validation details.
-
-**AND** the connector does NOT proceed with the request.
-
-**AND** the error message includes the endpoint URL, certificate subject, issuer, and validation failure reason.
-
-**AND** the error message recommends configuring a custom CA bundle if using a private CA.
-
-### Requirement: Shared CA Bundle Utility Integration
-
-**WHEN** the connector loads a custom CA bundle:
-
-**THEN** the connector uses the shared `loadCaBundle()` utility from `@red-hat-developer-hub/backstage-plugin-boost-connector-utils` (RHIDP-15316).
-
-**AND** the connector does NOT implement inline CA bundle loading logic.
-
-**AND** the connector benefits from shared error handling, validation, and monitoring.
-
----
-
-**WHEN** the shared `loadCaBundle()` utility is unavailable (dependency issue):
-
-**THEN** the connector logs a FATAL error indicating the missing dependency.
-
-**AND** the connector fails to start (required infrastructure is unavailable).
-
-**AND** the error message includes the missing package name and version.
-
-### Requirement: Prometheus Metrics for TLS and Auth
-
-**WHEN** the connector validates TLS certificates:
-
-**THEN** Prometheus metrics track TLS validation success and failure rates per endpoint.
-
-**AND** metrics include labels for endpoint URL, validation result (success/failure), and failure reason.
-
----
-
-**WHEN** the connector authenticates with the registry endpoint using Secret-based credentials:
-
-**THEN** Prometheus metrics track authentication success and failure rates per endpoint.
-
-**AND** metrics include labels for endpoint URL, auth method (basic/bearer), and HTTP status code.
-
-**AND** metrics do NOT include credential values (security).
+**AND** documentation explicitly states that no `ai-catalog.providers.mcpRegistry.auth` or `ai-catalog.providers.mcpRegistry.tls` configuration exists.

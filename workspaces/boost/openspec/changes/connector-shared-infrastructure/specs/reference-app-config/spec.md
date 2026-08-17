@@ -6,7 +6,9 @@
 
 ## Description
 
-Each AI catalog connector (MCP Registry, RHOAI MCP Catalog, OCI Skill Registry) requires deployment-specific configuration: endpoint URLs, CA bundles, K8s Secret credentials, sync schedules, and enable/disable toggles. A reference `app-config.yaml` snippet must demonstrate all configurable fields with inline documentation, covering both internet-connected and air-gapped deployment variants.
+Each AI catalog connector (RHOAI MCP Catalog, OCI Skill Registry) requires deployment-specific configuration: endpoint URLs, CA bundles, K8s Secret credentials, sync schedules, and enable/disable toggles. A reference `app-config.yaml` snippet must demonstrate all configurable fields with inline documentation, covering both internet-connected and air-gapped deployment variants.
+
+> **RHDHPLAN-393 replaced (2026-08-16):** MCP Registry entities are now ingested via catalog-info.yaml files using standard Backstage catalog discovery. No connector configuration needed for MCP Registry.
 
 This specification covers the reference app-config YAML that lives in the rhdh-plugins repository (e.g., `workspaces/boost/examples/`).
 
@@ -15,30 +17,6 @@ This specification covers the reference app-config YAML that lives in the rhdh-p
 None. This is a new reference configuration artifact.
 
 ## ADDED Requirements
-
-### Requirement: MCP Registry Connector Configuration
-
-The reference YAML must demonstrate MCP Registry connector configuration fields.
-
-#### Scenario: MCP Registry with mirror endpoint and custom CA
-
-- **WHEN** a deployer configures the MCP Registry connector for an air-gapped environment
-- **THEN** the reference YAML includes:
-  ```yaml
-  ai-catalog:
-    providers:
-      mcpRegistry:
-        # Mirror endpoint overrides public registry.modelcontextprotocol.io
-        endpoint: https://registry.internal.example.com
-        tls:
-          # Custom CA bundle for private registry TLS
-          caFile: /etc/ssl/certs/custom-ca-bundle.crt
-        auth:
-          # K8s Secret containing registry credentials (keys: username/password or token)
-          secretRef: mcp-registry-credentials
-  ```
-- **AND** each field includes an inline comment explaining its purpose
-- **AND** the `endpoint` field is documented as optional (falls back to public registry when omitted)
 
 ### Requirement: RHOAI MCP Catalog Connector Configuration
 
@@ -109,7 +87,6 @@ The reference YAML must include a complete air-gapped deployment variant.
 
 - **WHEN** a deployer needs to configure all connectors for an environment with no internet access
 - **THEN** the reference YAML includes an air-gapped variant section showing:
-  - MCP Registry pointed at internal mirror with custom CA
   - RHOAI pointed at internal RHOAI cluster with custom CA
   - OCI Skill pointed at internal Harbor/Quay mirror with pull secret and custom CA
   - All endpoints are internal hostnames with no fallback to public endpoints

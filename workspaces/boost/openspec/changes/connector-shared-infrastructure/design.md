@@ -2,21 +2,23 @@
 
 ## Context
 
-Boost builds three AI catalog connectors (MCP Registry, RHOAI, OCI Skill Registry) as Backstage entity providers. Each connector fetches AI entities from an external platform and surfaces them in the Backstage catalog. Air-gapped deployments require custom CA bundles for HTTPS verification. Connector failures must not crash the catalog backend or corrupt other entities.
+Boost builds two AI catalog connectors (RHOAI, OCI Skill Registry) as Backstage entity providers. Each connector fetches AI entities from an external platform and surfaces them in the Backstage catalog. Air-gapped deployments require custom CA bundles for HTTPS verification. Connector failures must not crash the catalog backend or corrupt other entities.
+
+> **RHDHPLAN-393 replaced (2026-08-16):** MCP Registry entities are now ingested via catalog-info.yaml files in GitHub/GitLab repos using standard Backstage catalog discovery, eliminating the need for a live MCP Registry connector. The shared infrastructure now serves two connectors (RHOAI, OCI Skill) instead of three.
 
 ## Goals
 
 - Shared utility package used by all connector backend modules
 - Per-connector CA bundle resolution with graceful failure handling
 - Fault isolation: one connector crash never affects other connectors or non-AI entities
-- Enable/disable pattern consistent across all three connectors
+- Enable/disable pattern consistent across both connectors
 - Structured error logging with actionable context for debugging air-gapped connectivity
 
 ## Non-Goals
 
-- Implementing the connectors themselves (covered in separate changes: MCP Registry, RHOAI, OCI Skill)
+- Implementing the connectors themselves (covered in separate changes: RHOAI, OCI Skill)
 - Defining entity schemas for AI entities (covered in `ai-catalog-entity-model` change)
-- Managing connector-specific authentication (e.g., OCI pull secrets, Kubeflow tokens, MCP auth)
+- Managing connector-specific authentication (e.g., OCI pull secrets, Kubeflow tokens)
 - Modifying Backstage's core entity provider lifecycle
 
 ## Decisions
@@ -25,7 +27,7 @@ Boost builds three AI catalog connectors (MCP Registry, RHOAI, OCI Skill Registr
 
 The shared infrastructure lives in a standalone utility package (`@red-hat-developer-hub/backstage-plugin-boost-connector-utils`) published as a Node.js library. It is NOT a Backstage plugin or backend module — just a utility package importable by all connector backend modules.
 
-**Why:** The three connectors are independent backend modules. Each module depends on the shared utilities but operates independently. A shared plugin would create unnecessary coupling and module-to-module dependencies. A utility package provides clear boundaries: connectors import functions, not Backstage extension points.
+**Why:** The two connectors are independent backend modules. Each module depends on the shared utilities but operates independently. A shared plugin would create unnecessary coupling and module-to-module dependencies. A utility package provides clear boundaries: connectors import functions, not Backstage extension points.
 
 **Package structure:**
 
@@ -43,7 +45,7 @@ plugins/boost-connector-utils/
 **Import example:**
 
 ```typescript
-// In boost-backend-module-mcp-registry
+// In boost-backend-module-rhoai
 import {
   loadCaBundle,
   createProviderWrapper,
@@ -58,14 +60,15 @@ CA bundles are loaded from mounted file paths or K8s Secret references. The conf
 ```yaml
 ai-catalog:
   providers:
-    mcpRegistry:
-      tls:
-        # Option 1: Direct file path (K8s Secret mounted as volume)
-        caFile: /etc/ssl/certs/custom-ca-bundle.pem
+    rhoai:
+      mcpCatalog:
+        tls:
+          # Option 1: Direct file path (K8s Secret mounted as volume)
+          caFile: /etc/ssl/certs/custom-ca-bundle.pem
 
-        # Option 2: K8s Secret reference (resolved via $env: pattern)
-        caSecret:
-          $env: MCP_REGISTRY_CA_BUNDLE # Environment variable containing PEM content
+          # Option 2: K8s Secret reference (resolved via $env: pattern)
+          caSecret:
+            $env: RHOAI_CA_BUNDLE # Environment variable containing PEM content
 ```
 
 **Function signature:**
@@ -79,7 +82,6 @@ function loadCaBundle(
 
 The caller passes the Config subtree that contains the `tls` block. This allows each connector to resolve its own config nesting before calling the shared utility:
 
-- MCP Registry: `loadCaBundle(config.getConfig('ai-catalog.providers.mcpRegistry'), logger)`
 - RHOAI MCP Catalog: `loadCaBundle(config.getConfig('ai-catalog.providers.rhoai.mcpCatalog'), logger)`
 - OCI per-registry: `loadCaBundle(registryConfig, logger)` where `registryConfig` is the per-registry Config node
 
@@ -96,7 +98,9 @@ The caller passes the Config subtree that contains the `tls` block. This allows 
 **Integration with HTTP client:**
 
 ```typescript
-const connectorConfig = config.getConfig('ai-catalog.providers.mcpRegistry');
+const connectorConfig = config.getConfig(
+  'ai-catalog.providers.rhoai.mcpCatalog',
+);
 const caBundle = loadCaBundle(connectorConfig, logger);
 const agent = caBundle ? new https.Agent({ ca: caBundle }) : undefined;
 
@@ -178,12 +182,11 @@ Each connector checks `ai-catalog.providers.<connectorId>.enabled` at backend mo
 ```yaml
 ai-catalog:
   providers:
-    mcpRegistry:
-      enabled: true # Default: true if omitted
-      endpoint: https://mcp-registry.example.com
-
     rhoai:
       enabled: false # Disabled — never registered
+
+    ociSkill:
+      enabled: true # Default: true if omitted
 ```
 
 **Registration guard:**
@@ -192,7 +195,7 @@ ai-catalog:
 // In backend module's init()
 export default createBackendModule({
   pluginId: 'catalog',
-  moduleId: 'mcp-registry',
+  moduleId: 'rhoai',
   register(env) {
     env.registerInit({
       deps: {
@@ -201,15 +204,13 @@ export default createBackendModule({
         logger: coreServices.logger,
       },
       async init({ catalog, config, logger }) {
-        const connectorConfig = config.getConfig(
-          'ai-catalog.providers.mcpRegistry',
-        );
+        const connectorConfig = config.getConfig('ai-catalog.providers.rhoai');
         if (!isConnectorEnabled(connectorConfig)) {
-          logger.info('MCP Registry connector is disabled');
+          logger.info('RHOAI connector is disabled');
           return; // Exit early — never call catalog.addEntityProvider()
         }
 
-        const provider = new McpRegistryEntityProvider(config, logger);
+        const provider = new RhoaiEntityProvider(config, logger);
         catalog.addEntityProvider(provider);
       },
     });
@@ -239,9 +240,9 @@ interface ConnectorErrorContext {
 **Logging pattern:**
 
 ```typescript
-logger.error('Failed to fetch MCP tools from registry', {
-  connectorId: 'mcpRegistry',
-  endpoint: 'https://mcp-registry.example.com/api/v1/tools',
+logger.error('Failed to fetch MCP servers from RHOAI', {
+  connectorId: 'rhoai',
+  endpoint: 'https://rhoai.example.com/api/mcp/v1/servers',
   errorType: error.constructor.name,
   errorMessage: error.message,
   retryable: isRetryableError(error),

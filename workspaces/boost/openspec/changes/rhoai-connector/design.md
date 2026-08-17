@@ -10,7 +10,7 @@ The MCP catalog API is developer preview in RHOAI 3.4; not all customers have up
 >
 > **Stakeholder Alignment (2026-07-13):**
 >
-> - **RHDHPLAN-393 complementary:** The RHOAI MCP catalog source and the MCP Registry connector (RHIDP-15313) serve different MCP server discovery paths — no ingestion duplication. RHDHPLAN-393 provides upstream MCP Registry; RHIDP-15313 adds productization. This connector ingests RHOAI-managed MCP servers separately.
+> - **MCP server discovery paths:** The RHOAI MCP catalog source and public MCP Registry discovery serve different MCP server discovery paths — no ingestion duplication. Public MCP Registry servers are ingested via catalog-info.yaml files (standard Backstage catalog discovery), while this connector discovers RHOAI-managed MCP servers via the RHOAI API.
 > - **RHDHPLAN-404 dependency:** Provides extended API entity schema that this connector leverages for MCP server entities (`kind: API, spec.type: mcp-server`). Model Registry integration (Kubeflow API) is handled under RHDHPLAN-404, not this connector.
 > - **MCP resource mapping deferred:** Mapping MCP resources (tools, prompts) as catalog entities is deferred for RHDH 2.1 (Christophe's consent; upstream due diligence pending). This connector emits MCP server entities only; MCP resource discovery is out of scope for now.
 > - **Llamastack/OGX:** New RHDHPLAN-1510 scope — Boost adds Llamastack/OGX as additional model information source alongside RHOAI. Separate connector work.

@@ -26,10 +26,10 @@ Each connector can configure a custom CA bundle for HTTPS verification via confi
 
 #### Scenario: Per-connector config isolation
 
-- **WHEN** MCP Registry connector has `tls.caFile: /etc/ssl/mcp-ca.pem`
-- **AND** RHOAI connector has `tls.caFile: /etc/ssl/rhoai-ca.pem`
-- **THEN** `loadCaBundle(mcpRegistryConfig)` returns only the MCP Registry CA bundle (where `mcpRegistryConfig = config.getConfig('ai-catalog.providers.mcpRegistry')`)
-- **AND** `loadCaBundle(rhoaiMcpCatalogConfig)` returns only the RHOAI CA bundle (where `rhoaiMcpCatalogConfig = config.getConfig('ai-catalog.providers.rhoai.mcpCatalog')`)
+- **WHEN** RHOAI connector has `tls.caFile: /etc/ssl/rhoai-ca.pem`
+- **AND** OCI Skill connector has `tls.caFile: /etc/ssl/oci-ca.pem`
+- **THEN** `loadCaBundle(rhoaiMcpCatalogConfig)` returns only the RHOAI CA bundle (where `rhoaiMcpCatalogConfig = config.getConfig('ai-catalog.providers.rhoai.mcpCatalog')`)
+- **AND** `loadCaBundle(ociSkillConfig)` returns only the OCI Skill CA bundle (where `ociSkillConfig` is the per-registry Config node)
 - **AND** each connector's `https.Agent` uses its own CA, not the other connector's CA
 
 ### Requirement: Graceful Failure Handling

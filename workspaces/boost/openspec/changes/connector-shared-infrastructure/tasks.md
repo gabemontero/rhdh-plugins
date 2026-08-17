@@ -6,7 +6,7 @@
 - [ ] 1.2 Define `loadCaBundle(connectorConfig: Config, logger: LoggerService): Buffer | undefined` function signature — caller passes the Config subtree containing the `tls` block
 - [ ] 1.3 Implement caFile resolution — read CA from `tls.caFile` within the provided Config subtree
 - [ ] 1.4 Implement caSecret resolution — read CA from `tls.caSecret.$env` within the provided Config subtree
-- [ ] 1.5 Add per-connector config isolation — each connector resolves its own Config nesting before calling `loadCaBundle()` (e.g., MCP passes `config.getConfig('ai-catalog.providers.mcpRegistry')`, RHOAI passes `config.getConfig('ai-catalog.providers.rhoai.mcpCatalog')`, OCI passes per-registry Config node)
+- [ ] 1.5 Add per-connector config isolation — each connector resolves its own Config nesting before calling `loadCaBundle()` (e.g., RHOAI passes `config.getConfig('ai-catalog.providers.rhoai.mcpCatalog')`, OCI passes per-registry Config node)
 - [ ] 1.6 Create `https.Agent` factory utility: `createHttpsAgent(caBundle?: Buffer): https.Agent | undefined`
 - [ ] 1.7 Handle missing CA file: log WARN-level warning with expected file path, return `undefined` (don't crash)
 - [ ] 1.8 Handle invalid/expired CA certificate: log ERROR with certificate details (issuer, expiry), return `undefined`
@@ -51,8 +51,7 @@
 - [ ] 4.2 Document app-config schema for CA bundle config in README with YAML examples
 - [ ] 4.3 Document enable/disable pattern in README with backend module example
 - [ ] 4.4 Document structured error logging pattern in README with example `ConnectorErrorContext` usage
-- [ ] 4.5 Create example app-config snippets for MCP Registry connector (caFile + enabled)
-- [ ] 4.6 Create example app-config snippets for RHOAI connector (caSecret with $env + enabled)
+- [ ] 4.5 Create example app-config snippets for RHOAI connector (caSecret with $env + enabled)
 - [ ] 4.7 Create example app-config snippets for OCI Skill connector
 - [ ] 4.8 Add JSDoc comments for all exported functions
 
@@ -68,8 +67,7 @@
 ## 6. Reference App-Config YAML (P1) — RHIDP-15266
 
 - [ ] 6.1 Create reference `app-config.yaml` snippet demonstrating: configurable endpoint URL, CA bundle reference, Secret-based credentials, sync schedule
-- [ ] 6.2 Include MCP Registry connector example: mirror endpoint, custom CA, K8s Secret auth
-- [ ] 6.3 Include RHOAI connector example: cross-cluster endpoint, MCP catalog toggle, Secret ref
+- [ ] 6.2 Include RHOAI connector example: cross-cluster endpoint, MCP catalog toggle, Secret ref
 - [ ] 6.4 Include OCI Skill connector example: multi-registry config, pull secret, namespace filtering
 - [ ] 6.5 Document each config field with inline comments explaining purpose and valid values
 - [ ] 6.6 Add air-gapped deployment variant showing zero-internet configuration
@@ -77,11 +75,10 @@
 
 ## ~~7. Connector Integration (P2) — deferred~~
 
-~~These tasks require connectors that are created in Tier 1 (Issues 9–16). Each connector issue will consume `boost-connector-utils` as part of its own implementation. See Issues 9 (OCI), 13–14 (MCP Registry), 15–16 (RHOAI).~~
+~~These tasks require connectors that are created in Tier 1 (Issues 9–16). Each connector issue will consume `boost-connector-utils` as part of its own implementation. See Issues 9 (OCI), 15–16 (RHOAI).~~
 
-- ~~7.1 Update MCP Registry connector to consume `@red-hat-developer-hub/backstage-plugin-boost-connector-utils`~~
-- ~~7.2 Update RHOAI connector to consume `@red-hat-developer-hub/backstage-plugin-boost-connector-utils`~~
-- ~~7.3 Update OCI Skill connector to consume `@red-hat-developer-hub/backstage-plugin-boost-connector-utils`~~
-- ~~7.4 Verify all three connectors use consistent CA bundle loading pattern~~
-- ~~7.5 Verify all three connectors use consistent enable/disable config~~
-- ~~7.6 Verify all three connectors use consistent structured error logging~~
+- ~~7.1 Update RHOAI connector to consume `@red-hat-developer-hub/backstage-plugin-boost-connector-utils`~~
+- ~~7.2 Update OCI Skill connector to consume `@red-hat-developer-hub/backstage-plugin-boost-connector-utils`~~
+- ~~7.3 Verify both connectors use consistent CA bundle loading pattern~~
+- ~~7.4 Verify both connectors use consistent enable/disable config~~
+- ~~7.5 Verify both connectors use consistent structured error logging~~

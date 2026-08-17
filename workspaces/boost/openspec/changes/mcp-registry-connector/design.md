@@ -1,218 +1,187 @@
-# Design: MCP Registry Connector — Productization & Air-Gapped Support
+# Design: MCP Server Catalog Ingestion — catalog-info.yaml & Annotation Enrichment
 
 ## Context
 
-The upstream MCP Registry entity provider (RHDHPLAN-393) provides a Backstage catalog provider that polls the public MCP Registry (`registry.modelcontextprotocol.io`) and emits Backstage entities for discovered MCP servers. It assumes internet connectivity and uses the public registry endpoint by default.
+MCP (Model Context Protocol) servers need to appear in the RHDH AI Asset catalog so teams can discover, govern, and consume them. The original plan (RHDHPLAN-393) assumed an upstream Backstage entity provider that would poll the public MCP Registry (`registry.modelcontextprotocol.io`) and emit entities. That provider has not landed, and enterprise deployments often run in air-gapped environments where contacting a public registry is not viable anyway.
 
-Enterprise deployments of Red Hat Developer Hub often run in air-gapped environments or behind corporate proxies with strict egress controls. These deployments require:
+A simpler, more robust approach is to define MCP server entities in standard `catalog-info.yaml` files hosted in Git repositories. Backstage already knows how to discover and ingest these. RHDH adds a lightweight CatalogProcessor that enriches discovered MCP server entities with `rhdh.io/ai-asset-*` annotations for integration with the AI Asset catalog and SDK validation.
 
-- Ability to mirror the MCP Registry internally
-- Zero outbound traffic to public endpoints when a mirror is configured
-- Support for custom TLS certificate authorities
-- Credential management for private/authenticated registries
-- Integration with RHDH's AI Asset catalog via standardized annotations
-
-This productization effort wraps the upstream connector with RHDH-specific hardening and air-gapped support, packaged as a standalone RHDH dynamic plugin.
-
-> **RHDHPLAN-1510 Consolidation (2026-07-08):** Epic RHIDP-15315 (OCI Skill Registry Connector) was closed — scope absorbed by RHIDP-15294 (RHDHPLAN-1507). This MCP Registry connector continues under RHIDP-15313. Dependency chain: RHIDP-15316 cross-connector stories (15265 endpoint/creds, 15329 CA bundles) must land before this connector's TLS/auth hardening (RHIDP-15318) can proceed.
+> **RHDHPLAN-1510 Consolidation (2026-07-08):** Epic RHIDP-15315 (OCI Skill Registry Connector) was closed — scope absorbed by RHIDP-15294 (RHDHPLAN-1507). MCP server ingestion continues under RHIDP-15313. Dependency chain: RHIDP-15316 cross-connector stories (15265 endpoint/creds, 15329 CA bundles) apply to connectors that poll external APIs (RHOAI, OCI); they are not needed for catalog-info.yaml-based ingestion.
 >
 > **Stakeholder Alignment (2026-07-13):**
 >
-> - **RHDHPLAN-393 complementary:** This productization wrapper layers on top of RHDHPLAN-393's upstream MCP Registry connector. No ingestion duplication — RHDHPLAN-393 provides core MCP server discovery, this connector adds air-gapped support, credential management, and AI Asset annotation enrichment.
-> - **RHDHPLAN-404 dependency:** The upstream RHDHPLAN-393 connector emits API entities with `spec.type: mcp-server` (a recent Backstage addition). This productization wrapper is kind-agnostic — it enriches annotations regardless of entity kind.
-> - **MCP resource mapping deferred:** Mapping MCP resources (tools, prompts) as catalog entities is deferred for RHDH 2.1 (Christophe's consent; upstream due diligence pending). This connector focuses on MCP server entity discovery only.
+> - **RHDHPLAN-393 replaced:** The upstream MCP Registry entity provider (RHDHPLAN-393) is no longer a dependency. MCP server entities are ingested from catalog-info.yaml files via standard Backstage discovery, eliminating the blocker. RHIDP-15655 and RHIDP-15658 are no longer on the critical path for RHDHPLAN-1510.
+> - **MCP resource mapping deferred:** Mapping MCP resources (tools, prompts) as catalog entities is deferred for RHDH 2.1 (Christophe's consent; upstream due diligence pending). This change focuses on MCP server entity discovery only.
 
 ## Goals
 
-- **Air-gapped support** — customers can deploy MCP Registry connector in zero-internet environments using mirrored registries
-- **Enterprise TLS** — support custom CA bundles for private registries with non-public certificate authorities
-- **Credential management** — Kubernetes Secret-based authentication for private/authenticated registries
-- **AI Asset integration** — entities carry RHDH AI Asset annotations for catalog integration and SDK validation
-- **Zero regressions** — all upstream connector functionality remains intact
-- **Packageability** — connector ships as standalone RHDH dynamic plugin
+- **catalog-info.yaml schema** — define a clear, documented schema for MCP server entities in catalog-info.yaml files
+- **Air-gapped by default** — catalog-info.yaml files live in Git repos; no external registry connectivity required
+- **AI Asset integration** — a CatalogProcessor enriches MCP server entities with `rhdh.io/ai-asset-*` annotations for catalog integration and SDK validation
+- **Zero regressions** — existing catalog ingestion for non-MCP entities is unaffected
+- **Packageability** — CatalogProcessor ships as part of the Boost backend plugin (or standalone RHDH dynamic plugin)
 
 ## Non-Goals
 
-- Modifying the upstream MCP Registry entity provider's core logic (RHDHPLAN-393)
-- Building a mirror registry server (customers bring their own)
+- Building or polling a live MCP Registry API (replaced by catalog-info.yaml approach)
+- Building a mirror registry server
 - Implementing MCP server validation or health checks (covered in separate epic)
-- Changing the MCP Registry API contract
-- Supporting multiple mirror endpoints per connector instance
-- Implementing registry authentication beyond K8s Secret-based credentials
+- Supporting MCP resource (tool/prompt) entities (deferred to RHDH 2.1)
+- TLS/auth hardening for MCP Registry API access (no longer applicable — Git repo auth is handled by Backstage's existing GitHub/GitLab integrations)
 
 ## Decisions
 
-### Decision 1: Productization Wrapper vs. Fork
+### Decision 1: catalog-info.yaml over Upstream Provider
 
-**Decision:** Wrap the upstream connector as a Backstage backend module, intercepting entity emission to add annotations and configuration hooks for mirror endpoint/TLS/auth.
+**Decision:** Ingest MCP server entities from standard `catalog-info.yaml` files discovered by Backstage's built-in catalog discovery mechanisms, rather than depending on an upstream MCP Registry entity provider (RHDHPLAN-393).
 
 **Rationale:**
 
-- Preserves upgrade path to future upstream changes
-- Avoids code duplication
-- Maintains clean separation between upstream connector logic and RHDH-specific productization
-- Allows RHDH to ship the wrapper while contributing generic improvements upstream
+- Eliminates the RHDHPLAN-393 blocker (RHIDP-15655, RHIDP-15658) — those upstream issues are unassigned and have no timeline
+- Works in air-gapped environments natively — catalog-info.yaml files are in Git repos that customers already mirror
+- Leverages existing Backstage infrastructure (location discovery, entity processing, GitHub/GitLab integration auth)
+- Gives teams full control over which MCP servers appear in the catalog
+- Simpler architecture — no provider wrapper, no mirror endpoint, no registry-specific TLS/auth
 
-**Alternative considered:** Fork the upstream connector and embed productization logic directly.
+**Alternative considered:** Wait for RHDHPLAN-393's upstream MCP Registry entity provider to land, then wrap it with productization.
 
-**Rejected because:** Breaks upgrade path, creates maintenance burden, loses upstream improvements.
+**Rejected because:** No timeline on upstream delivery; the wrapper adds complexity for air-gapped support that catalog-info.yaml solves inherently.
+
+**Example catalog-info.yaml:**
+
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: filesystem-mcp-server
+  title: Filesystem MCP Server
+  description: MCP server providing filesystem operations
+  annotations:
+    rhdh.io/ai-asset-category: mcp-server
+    rhdh.io/ai-asset-version: '1.2.3'
+    rhdh.io/ai-asset-source: catalog-info/default
+spec:
+  type: mcp-server
+  lifecycle: production
+  owner: team-platform
+  definition: |
+    MCP server exposing read/write filesystem tools.
+```
+
+### Decision 2: CatalogProcessor for Annotation Enrichment
+
+**Decision:** Implement an `McpServerAnnotationProcessor` as a Backstage CatalogProcessor that auto-populates `rhdh.io/ai-asset-*` annotations on entities with `spec.type: mcp-server`.
+
+**Rationale:**
+
+- CatalogProcessors run during Backstage's entity processing pipeline — the standard extension point for transforming entities
+- Annotations can be pre-populated in catalog-info.yaml (processor preserves existing values) or auto-populated by the processor
+- Decoupled from entity discovery — works regardless of how the entity enters the catalog (catalog-info.yaml, API, or future provider)
+- Easy to test (unit tests verify processor input/output)
+
+**Alternative considered:** Require all annotations to be manually specified in catalog-info.yaml.
+
+**Rejected because:** Error-prone, inconsistent annotation values, no enforcement of annotation presence.
 
 **Implementation pattern:**
 
 ```typescript
-// plugins/boost-backend-module-mcp-registry/src/module.ts
-export const mcpRegistryModule = createBackendModule({
-  pluginId: 'catalog',
-  moduleId: 'mcp-registry-rhdh',
-  register(env) {
-    env.registerInit({
-      deps: {
-        catalog: catalogProcessingExtensionPoint,
-        config: coreServices.rootConfig,
-        logger: coreServices.logger,
-        cacheService: coreServices.cache,
-      },
-      async init({ catalog, config, logger, cacheService }) {
-        // Wrap upstream MCP Registry provider
-        const upstreamProvider = createMcpRegistryProvider(config, logger);
+// plugins/boost-backend/src/processors/McpServerAnnotationProcessor.ts
+import {
+  CatalogProcessor,
+  CatalogProcessorEmit,
+} from '@backstage/plugin-catalog-node';
+import { Entity } from '@backstage/catalog-model';
+import { normalizeAIAssetVersion } from '@red-hat-developer-hub/backstage-plugin-boost-common';
 
-        // Intercept entity emission
-        const wrappedProvider = new RhdhMcpRegistryProviderWrapper(
-          upstreamProvider,
-          config,
-          logger,
-          cacheService,
-        );
+export class McpServerAnnotationProcessor implements CatalogProcessor {
+  getProcessorName(): string {
+    return 'McpServerAnnotationProcessor';
+  }
 
-        catalog.addEntityProvider(wrappedProvider);
+  async preProcessEntity(
+    entity: Entity,
+    _location: LocationSpec,
+    _emit: CatalogProcessorEmit,
+  ): Promise<Entity> {
+    if (entity.spec?.type !== 'mcp-server') {
+      return entity;
+    }
+
+    const annotations = entity.metadata.annotations ?? {};
+
+    return {
+      ...entity,
+      metadata: {
+        ...entity.metadata,
+        annotations: {
+          'rhdh.io/ai-asset-category':
+            annotations['rhdh.io/ai-asset-category'] ?? 'mcp-server',
+          'rhdh.io/ai-asset-version':
+            annotations['rhdh.io/ai-asset-version'] ??
+            normalizeAIAssetVersion(entity.spec?.version as string) ??
+            'unknown',
+          'rhdh.io/ai-asset-source':
+            annotations['rhdh.io/ai-asset-source'] ?? 'catalog-info/default',
+          ...annotations,
+        },
       },
-    });
-  },
-});
+    };
+  }
+}
 ```
 
-The wrapper intercepts `getProviderName()` and `connect()` to inject mirror endpoint configuration, TLS settings, and annotation enrichment.
+The processor checks `spec.type === 'mcp-server'` and fills in any missing `rhdh.io/ai-asset-*` annotations without overwriting values already present in the catalog-info.yaml.
 
-### Decision 2: Mirror Endpoint Configuration via app-config
+### Decision 3: Entity Kind — API with spec.type: mcp-server
 
-**Decision:** Use `ai-catalog.providers.mcpRegistry.endpoint` in app-config to override the public registry endpoint. When unset, fall back to `registry.modelcontextprotocol.io`.
+**Decision:** MCP server entities use `kind: API` with `spec.type: mcp-server`, following the Backstage upstream direction for MCP server representation.
 
 **Rationale:**
 
-- Follows Backstage app-config conventions
-- Allows per-environment overrides (dev, staging, production)
-- Explicit opt-in to mirror endpoint usage
-- Simple URL validation at startup
-
-**Alternative considered:** Environment variable-based override (`MCP_REGISTRY_ENDPOINT`).
-
-**Rejected because:** Less flexible than app-config, harder to scope to specific connector instances in multi-tenant deployments.
+- Aligns with emerging Backstage convention for API-type entities representing MCP servers
+- Reuses existing Backstage API entity infrastructure (API docs, API catalog page)
+- `spec.type: mcp-server` distinguishes MCP servers from other API types (REST, gRPC, GraphQL)
+- The CatalogProcessor triggers on `spec.type`, not `kind`, making it kind-agnostic
 
 **Configuration schema:**
 
 ```yaml
-ai-catalog:
-  providers:
-    mcpRegistry:
-      # Optional mirror endpoint (falls back to registry.modelcontextprotocol.io)
-      endpoint: https://registry.internal.example.com
-
-      # Optional TLS configuration
-      tls:
-        caFile: /etc/ssl/certs/custom-ca-bundle.crt # Path to CA bundle
-
-      # Optional authentication
-      auth:
-        secretRef: mcp-registry-credentials # K8s Secret containing credentials
+# No connector-specific configuration required.
+# MCP server entities are discovered through standard Backstage catalog locations:
+catalog:
+  locations:
+    - type: url
+      target: https://github.com/my-org/mcp-servers/blob/main/catalog-info.yaml
+    - type: url
+      target: https://github.com/my-org/another-repo/blob/main/mcp-server.yaml
 ```
 
-**Validation rules:**
+### Decision 4: Annotation Enrichment Semantics
 
-- `endpoint` must be a valid HTTPS URL
-- `tls.caFile` must be a readable file path
-- `auth.secretRef` must reference an existing Kubernetes Secret (validated at runtime)
-
-**Zero-internet guarantee:**
-
-- When `endpoint` is set, the connector NEVER falls back to the public endpoint
-- Integration test validates no outbound traffic to `registry.modelcontextprotocol.io` when mirror is configured
-- Network layer monitoring confirms DNS resolution and HTTP requests target only the configured mirror endpoint
-
-### Decision 3: CA Bundle Loading via Shared Utility (RHIDP-15316)
-
-**Decision:** Use the shared `loadCaBundle()` utility from RHIDP-15316's cross-connector infrastructure to load custom CA bundles.
-
-**Rationale:**
-
-- Avoids duplicating CA bundle loading logic across connectors
-- Benefits from shared error handling, validation, and monitoring
-- Simplifies testing (shared test suite)
-- Consistent behavior across all AI platform connectors
-
-**Alternative considered:** Inline CA bundle loading in the MCP Registry connector.
-
-**Rejected because:** Code duplication, inconsistent error handling, harder to maintain.
-
-**Integration pattern:**
-
-```typescript
-import { loadCaBundle } from '@red-hat-developer-hub/backstage-plugin-boost-connector-utils';
-
-const connectorConfig = config.getConfig('ai-catalog.providers.mcpRegistry');
-const caBundle = loadCaBundle(connectorConfig);
-
-// Pass CA bundle to HTTP client
-const httpsAgent = new https.Agent({
-  ca: caBundle,
-  rejectUnauthorized: true, // Always enforce TLS verification
-});
-```
-
-**Error handling:**
-
-- Invalid CA bundle path: log warning, fall back to system CA bundle
-- Unreadable CA bundle file: log warning, fall back to system CA bundle
-- Malformed CA bundle PEM: log warning, fall back to system CA bundle
-
-**Dependency:**
-
-- `@red-hat-developer-hub/backstage-plugin-boost-connector-utils` package exports `loadCaBundle()` utility
-- Shared utility handles file reading, PEM validation, and error logging
-
-### Decision 4: Annotation Enrichment Pipeline After Entity Emission
-
-**Decision:** Enrich entities with AI Asset annotations after the upstream connector emits them, before `applyMutation` sends them to the catalog.
-
-**Rationale:**
-
-- Preserves upstream connector logic
-- Centralized annotation enrichment in the wrapper layer
-- Easy to test (unit tests can verify annotation presence)
-- Decoupled from upstream connector changes
-
-**Alternative considered:** Modify upstream connector to emit annotations directly.
-
-**Rejected because:** Breaks upgrade path, couples RHDH-specific logic to upstream connector.
+**Decision:** The CatalogProcessor populates three AI Asset annotations on MCP server entities, preserving any values already set in catalog-info.yaml.
 
 **Annotation scheme (from RHDHPLAN-1507's `ai-catalog-entity-model`):**
 
 ```yaml
 metadata:
   annotations:
-    # AI Asset category (always "mcp-server" for MCP Registry entities)
+    # AI Asset category (always "mcp-server" for MCP server entities)
     rhdh.io/ai-asset-category: mcp-server
 
-    # Version metadata (extracted from MCP server manifest if available)
-    rhdh.io/ai-asset-version: '1.0.0' # or "unknown" if not available
+    # Version metadata (from catalog-info.yaml or "unknown" if not specified)
+    rhdh.io/ai-asset-version: '1.0.0'
 
-    # Source identifier — connector type + config key (e.g., "mcp-registry/mcpRegistry")
-    rhdh.io/ai-asset-source: mcp-registry/<instance-id>
+    # Source identifier — "catalog-info/<namespace>" for catalog-info.yaml-sourced entities
+    rhdh.io/ai-asset-source: catalog-info/default
 ```
 
 **Enrichment logic:**
 
 ```typescript
 function enrichWithAiAssetAnnotations(entity: Entity): Entity {
+  const annotations = entity.metadata.annotations ?? {};
+  const namespace = entity.metadata.namespace ?? 'default';
   return {
     ...entity,
     metadata: {
@@ -220,9 +189,10 @@ function enrichWithAiAssetAnnotations(entity: Entity): Entity {
       annotations: {
         'rhdh.io/ai-asset-category': 'mcp-server',
         'rhdh.io/ai-asset-version':
-          normalizeAIAssetVersion(extractVersion(entity)) || 'unknown',
-        'rhdh.io/ai-asset-source': `mcp-registry/${connectorId}`,
-        ...entity.metadata.annotations,
+          normalizeAIAssetVersion(annotations['rhdh.io/ai-asset-version']) ||
+          'unknown',
+        'rhdh.io/ai-asset-source': `catalog-info/${namespace}`,
+        ...annotations,
       },
     },
   };
@@ -231,63 +201,39 @@ function enrichWithAiAssetAnnotations(entity: Entity): Entity {
 
 **SDK validation integration:**
 
-- Enriched entities pass through RHDHPLAN-1507's SDK validation layer before catalog ingestion
+- Enriched entities pass through RHDHPLAN-1507's SDK validation layer during catalog ingestion
 - Invalid annotations trigger validation warnings but don't block ingestion
 - Validation metrics track annotation completeness and correctness
 
 ## Risks
 
-### Risk 1: Upstream Connector API Changes
+### Risk 1: Incomplete catalog-info.yaml Adoption
 
-**Likelihood:** Medium  
-**Impact:** High  
+**Likelihood:** Medium
+**Impact:** Medium
 **Mitigation:**
 
-- Monitor upstream RHDHPLAN-393 for breaking changes
-- Maintain wrapper abstraction layer to isolate upstream API changes
-- Automated tests against multiple upstream connector versions
-- Document required upstream connector version in package.json peer dependencies
+- Provide documented examples and templates for common MCP server types
+- CatalogProcessor auto-populates missing annotations — teams don't need to get annotations perfect
+- Migration guide from manual entity definition to catalog-info.yaml
 
-### Risk 2: Mirror Registry Availability
+### Risk 2: Annotation Schema Divergence
 
-**Likelihood:** Low  
-**Impact:** High  
-**Mitigation:**
-
-- No fallback to public registry when mirror is configured (fail-closed)
-- Health check endpoint for mirror registry availability monitoring
-- Clear error messages when mirror is unreachable
-- Documentation includes mirror registry setup and monitoring guidance
-
-### Risk 3: CA Bundle Invalidation
-
-**Likelihood:** Low  
-**Impact:** Medium  
-**Mitigation:**
-
-- Graceful degradation: invalid CA bundle logs warning, falls back to system CA bundle
-- Runtime CA bundle validation on connector startup
-- Prometheus metrics for CA bundle validation failures
-- Clear error messages with remediation steps
-
-### Risk 4: Credential Secret Rotation
-
-**Likelihood:** Medium  
-**Impact:** Medium  
-**Mitigation:**
-
-- Cache credential Secret values with TTL (default 5 minutes)
-- Automatic retry on credential failure
-- Prometheus metrics for auth failures
-- Documentation includes Secret rotation procedures
-
-### Risk 5: Annotation Schema Divergence
-
-**Likelihood:** Low  
-**Impact:** Low  
+**Likelihood:** Low
+**Impact:** Low
 **Mitigation:**
 
 - Shared annotation schema defined in RHDHPLAN-1507's `ai-catalog-entity-model`
 - SDK validation enforces annotation schema compliance
 - Automated tests verify annotation presence and correctness
 - Version annotation schema in `@red-hat-developer-hub/backstage-plugin-boost-common` package
+
+### Risk 3: Future Upstream Provider Overlap
+
+**Likelihood:** Medium
+**Impact:** Low
+**Mitigation:**
+
+- If RHDHPLAN-393's upstream provider eventually ships, catalog-info.yaml and provider-discovered entities coexist — the CatalogProcessor enriches both
+- No lock-in to one discovery mechanism
+- CatalogProcessor is kind-agnostic and source-agnostic

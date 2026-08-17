@@ -1,28 +1,28 @@
-# AI Asset Annotation Enrichment
+# AI Asset Annotation Enrichment — CatalogProcessor
 
 > **Status: Draft** — Pre-implementation specification.
 >
-> **Cross-connector dependencies:** RHIDP-15319 is blocked by RHDHPLAN-1507's SDK (RHIDP-15258) which defines the AI Asset annotation scheme (`rhdh.io/ai-asset-category`, `rhdh.io/ai-asset-version`, `rhdh.io/ai-asset-source`) and SDK validation layer. The annotation constants and validation must be exported by the SDK before this enrichment pipeline can integrate.
+> **Cross-connector dependencies:** RHIDP-15319 is blocked by RHDHPLAN-1507's SDK (RHIDP-15258) which defines the AI Asset annotation scheme (`rhdh.io/ai-asset-category`, `rhdh.io/ai-asset-version`, `rhdh.io/ai-asset-source`) and SDK validation layer. The annotation constants and validation must be exported by the SDK before this enrichment processor can integrate.
 >
 > **Connector-specific extensions:** Individual connectors may define additional `rhdh.io/ai-asset-*` annotations beyond the core three. The OCI Skill connector defines `rhdh.io/ai-asset-digest` (OCI image digest for incremental sync). These extensions follow the same namespace but are not required by the SDK validation layer.
 
 ## Description
 
-The MCP Registry connector must enrich emitted entities with RHDH AI Asset annotations to enable integration with RHDH's AI Asset catalog and SDK validation. Annotations identify entities as MCP servers, track version metadata, and record provenance.
+The `McpServerAnnotationProcessor` is a Backstage CatalogProcessor that enriches MCP server entities with RHDH AI Asset annotations. It runs during Backstage's entity processing pipeline, auto-populating `rhdh.io/ai-asset-*` annotations on any entity with `spec.type: mcp-server` — whether the entity was discovered from a catalog-info.yaml file, an API call, or any other source.
 
-This specification covers RHIDP-15319: MCP Registry AI Asset annotation enrichment.
+This specification covers RHIDP-15319: MCP server AI Asset annotation enrichment.
 
 ## EXISTING Requirements
 
-None — this is a new productization wrapper around the upstream MCP Registry entity provider (RHDHPLAN-393).
+None — this is a new CatalogProcessor for MCP server entity annotation enrichment, replacing the upstream provider wrapper approach (RHDHPLAN-393).
 
 ## ADDED Requirements
 
-### Requirement: Annotation Population During Entity Emission
+### Requirement: Annotation Population During Entity Processing
 
-**WHEN** the upstream MCP Registry connector emits a Backstage entity for a discovered MCP server:
+**WHEN** the Backstage catalog processes an entity with `spec.type: mcp-server`:
 
-**THEN** the productization wrapper enriches the entity with AI Asset annotations before passing it to `applyMutation`.
+**THEN** the `McpServerAnnotationProcessor` enriches the entity with AI Asset annotations during `preProcessEntity`.
 
 **AND** the enriched entity carries the following annotations:
 
@@ -30,71 +30,77 @@ None — this is a new productization wrapper around the upstream MCP Registry e
 metadata:
   annotations:
     rhdh.io/ai-asset-category: 'mcp-server'
-    rhdh.io/ai-asset-version: '1.0.0' # Extracted from MCP server manifest or "unknown"
-    rhdh.io/ai-asset-source: 'mcp-registry/<instance-id>'
+    rhdh.io/ai-asset-version: '1.0.0' # From catalog-info.yaml or "unknown"
+    rhdh.io/ai-asset-source: 'catalog-info/<namespace>'
 ```
 
-**AND** the annotation enrichment happens synchronously within the entity emission pipeline.
+**AND** the annotation enrichment happens synchronously within the processing pipeline.
 
 **AND** the enriched entity is logged at DEBUG level for observability.
 
 ---
 
-**WHEN** the upstream MCP Registry connector emits an entity that already contains AI Asset annotations:
+**WHEN** the entity already contains AI Asset annotations (set explicitly in catalog-info.yaml):
 
-**THEN** the productization wrapper does NOT overwrite existing annotations.
+**THEN** the processor does NOT overwrite existing annotations.
 
-**AND** the wrapper logs a DEBUG-level message indicating annotations were preserved.
+**AND** the processor logs a DEBUG-level message indicating annotations were preserved.
 
-**AND** the wrapper proceeds with the entity unchanged.
+**AND** the processor proceeds with the entity unchanged.
+
+---
+
+**WHEN** the entity does NOT have `spec.type: mcp-server`:
+
+**THEN** the processor returns the entity unchanged.
+
+**AND** the processor introduces no latency or side effects for non-MCP entities.
 
 ---
 
 **WHEN** the enrichment logic fails (unexpected entity structure, annotation serialization error):
 
-**THEN** the wrapper logs a WARNING-level message indicating the enrichment failure.
+**THEN** the processor logs a WARNING-level message indicating the enrichment failure.
 
-**AND** the wrapper emits the entity without annotations (degraded mode).
+**AND** the processor returns the entity without annotations (degraded mode).
 
 **AND** the warning message includes the entity reference and error details.
 
 **AND** Prometheus metrics track enrichment failure rate.
 
-### Requirement: Version Metadata Extraction
+### Requirement: Version Metadata Handling
 
-**WHEN** the MCP server manifest includes version metadata:
+**WHEN** the catalog-info.yaml includes a version annotation:
 
-```json
-{
-  "name": "filesystem-mcp-server",
-  "version": "1.2.3",
-  "description": "MCP server for filesystem operations"
-}
+```yaml
+metadata:
+  annotations:
+    rhdh.io/ai-asset-version: '1.2.3'
 ```
 
-**THEN** the wrapper extracts the version field, normalizes it via `normalizeAIAssetVersion()` (SDK-exported from RHDHPLAN-1507), and populates `rhdh.io/ai-asset-version: "1.2.3"`.
-
-**AND** the wrapper validates the version string is non-empty.
+**THEN** the processor preserves the version value as-is (it was explicitly set by the entity author).
 
 ---
 
-**WHEN** the MCP server manifest does NOT include version metadata:
+**WHEN** the catalog-info.yaml does NOT include a version annotation:
 
-**THEN** the wrapper populates `rhdh.io/ai-asset-version: "unknown"`.
+**THEN** the processor populates `rhdh.io/ai-asset-version: "unknown"`.
 
-**AND** the wrapper logs a DEBUG-level message indicating missing version metadata.
-
-**AND** the wrapper proceeds with the placeholder version annotation.
+**AND** the processor logs a DEBUG-level message indicating missing version metadata.
 
 ---
 
-**WHEN** the MCP server manifest includes invalid version metadata (empty string, malformed semver):
+**WHEN** the catalog-info.yaml includes a `spec.version` field (alternative version source):
 
-**THEN** the wrapper logs a WARNING-level message indicating invalid version.
+```yaml
+spec:
+  type: mcp-server
+  version: '2.0.0'
+```
 
-**AND** the wrapper populates `rhdh.io/ai-asset-version: "unknown"`.
+**THEN** the processor extracts the version from `spec.version`, normalizes it via `normalizeAIAssetVersion()` (SDK-exported from RHDHPLAN-1507), and populates `rhdh.io/ai-asset-version`.
 
-**AND** the warning message includes the entity reference and invalid version value.
+**AND** an explicit `rhdh.io/ai-asset-version` annotation takes precedence over `spec.version`.
 
 ### Requirement: SDK Validation Integration
 
@@ -120,86 +126,65 @@ metadata:
 
 ### Requirement: Annotation Category Constancy
 
-**WHEN** the wrapper enriches an entity emitted by the MCP Registry connector:
+**WHEN** the processor enriches an entity with `spec.type: mcp-server`:
 
-**THEN** the wrapper always populates `rhdh.io/ai-asset-category: "mcp-server"` unless the entity already carries this annotation.
+**THEN** the processor always populates `rhdh.io/ai-asset-category: "mcp-server"` unless the entity already carries this annotation.
 
-**AND** the wrapper does NOT infer or vary the category based on MCP server metadata.
+**AND** the processor does NOT infer or vary the category based on entity metadata.
 
-**AND** all entities enriched by the wrapper share the same category value.
+**AND** all MCP server entities enriched by the processor share the same category value.
 
----
+### Requirement: Annotation Source Format
 
-**WHEN** the MCP server manifest includes category metadata (hypothetical future scenario):
+**WHEN** the processor enriches an entity with `spec.type: mcp-server`:
 
-**THEN** the wrapper ignores the manifest category and uses the fixed value `"mcp-server"`.
+**THEN** the processor populates `rhdh.io/ai-asset-source` using the format `catalog-info/<namespace>`, where `<namespace>` is the entity's `metadata.namespace` (defaulting to `default`).
 
-**AND** the wrapper logs a DEBUG-level message indicating manifest category was ignored.
+**AND** the source prefix (`catalog-info`) is constant — it identifies the ingestion mechanism.
 
-### Requirement: Annotation Source Constancy
-
-**WHEN** the wrapper enriches an entity emitted by the MCP Registry connector:
-
-**THEN** the wrapper populates `rhdh.io/ai-asset-source` using the format `mcp-registry/<instance-id>`, where `<instance-id>` is the configuration key under `ai-catalog.providers` (e.g., `mcpRegistry`).
-
-**AND** the source prefix (`mcp-registry`) is constant — it identifies the connector type.
-
-**AND** the instance suffix identifies which connector instance produced the entity.
+**AND** the namespace suffix enables provenance tracking when entities come from different namespaces.
 
 ---
 
-**WHEN** multiple MCP Registry connector instances are configured:
+**WHEN** a catalog-info.yaml explicitly sets `rhdh.io/ai-asset-source`:
 
 ```yaml
-ai-catalog:
-  providers:
-    mcpRegistryPrimary:
-      endpoint: https://registry-primary.internal.example.com
-    mcpRegistrySecondary:
-      endpoint: https://registry-secondary.internal.example.com
+metadata:
+  annotations:
+    rhdh.io/ai-asset-source: 'custom-source/my-team'
 ```
 
-**THEN** entities from `mcpRegistryPrimary` carry `rhdh.io/ai-asset-source: "mcp-registry/mcpRegistryPrimary"`.
+**THEN** the processor preserves the explicit value.
 
-**AND** entities from `mcpRegistrySecondary` carry `rhdh.io/ai-asset-source: "mcp-registry/mcpRegistrySecondary"`.
-
-**AND** the source annotation differentiates connector instances, enabling provenance tracking when an entity exists in multiple registries.
+**AND** the processor does NOT overwrite it with the default `catalog-info/<namespace>` format.
 
 ### Requirement: Annotation Enrichment Performance
 
-**WHEN** the wrapper enriches an entity:
+**WHEN** the processor enriches an entity:
 
 **THEN** the enrichment logic completes in under 5ms (synchronous operation).
 
 **AND** the enrichment logic does NOT make network requests (local metadata extraction only).
 
-**AND** the enrichment logic does NOT query external services (SDK validation, cache lookups).
+**AND** the enrichment logic does NOT query external services.
 
 ---
 
-**WHEN** the wrapper enriches 1000 entities in a single connector poll cycle:
+**WHEN** the processor enriches 1000 entities in a single catalog processing cycle:
 
 **THEN** the total enrichment overhead is under 5 seconds (5ms per entity).
 
-**AND** the wrapper does NOT introduce catalog ingestion latency regressions.
+**AND** the processor does NOT introduce catalog ingestion latency regressions.
 
 **AND** Prometheus metrics track enrichment latency per entity (p50, p95, p99).
 
 ### Requirement: Prometheus Metrics for Annotation Enrichment
 
-**WHEN** the wrapper enriches an entity:
+**WHEN** the processor enriches an entity:
 
 **THEN** Prometheus metrics track enrichment success and failure rates.
 
 **AND** metrics include labels for entity kind, entity reference, and enrichment result (success/failure).
-
----
-
-**WHEN** the wrapper extracts version metadata from the MCP server manifest:
-
-**THEN** Prometheus metrics track version extraction success and failure rates.
-
-**AND** metrics include labels for version value (hashed for cardinality control) and extraction result.
 
 ---
 

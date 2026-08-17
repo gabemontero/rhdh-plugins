@@ -12,9 +12,8 @@ One connector crash does not affect other connectors' entities or non-AI catalog
 
 #### Scenario: Backstage entity bucket isolation
 
-- **WHEN** MCP Registry connector crashes during a scheduled refresh
-- **THEN** RHOAI connector's entities remain visible in the catalog
-- **AND** OCI Skill connector's entities remain visible in the catalog
+- **WHEN** RHOAI connector crashes during a scheduled refresh
+- **THEN** OCI Skill connector's entities remain visible in the catalog
 - **AND** non-AI catalog entities (components, APIs, users, groups) remain unaffected
 - **AND** Backstage's entity bucket isolation prevents cross-provider entity corruption
 
@@ -40,9 +39,9 @@ Each connector failure produces actionable error details for debugging.
 
 #### Scenario: Structured error log includes connector context
 
-- **WHEN** MCP Registry connector fails to fetch tools from the external registry
+- **WHEN** a connector fails to fetch entities from its external source
 - **THEN** the error log includes fields: `connectorId`, `endpoint`, `errorType`, `errorMessage`, `retryable`, `nextRetryAt`
-- **AND** `connectorId` is the provider name (e.g., `'mcpRegistry'`)
+- **AND** `connectorId` is the provider name (e.g., `'rhoai'`)
 - **AND** `endpoint` is the external API URL that failed
 - **AND** `errorType` is the error constructor name (e.g., `'FetchError'`, `'TimeoutError'`)
 - **AND** `errorMessage` is the human-readable error message
@@ -87,16 +86,16 @@ Disabled connectors are never registered, producing zero resource usage.
 
 One connector's failure does not trigger retries or error states in other connectors.
 
-#### Scenario: MCP Registry failure does not affect RHOAI connector
+#### Scenario: RHOAI failure does not affect OCI Skill connector
 
-- **WHEN** MCP Registry connector fails repeatedly (e.g., network unreachable)
-- **THEN** RHOAI connector continues its scheduled refresh tasks independently
-- **AND** RHOAI connector's retry logic operates on its own schedule
-- **AND** RHOAI connector's error logs are distinct from MCP Registry logs
+- **WHEN** RHOAI connector fails repeatedly (e.g., network unreachable)
+- **THEN** OCI Skill connector continues its scheduled refresh tasks independently
+- **AND** OCI Skill connector's retry logic operates on its own schedule
+- **AND** OCI Skill connector's error logs are distinct from RHOAI logs
 
 #### Scenario: All connectors can fail simultaneously without cascading
 
-- **WHEN** all three connectors (MCP Registry, RHOAI, OCI Skill) fail simultaneously
+- **WHEN** both connectors (RHOAI, OCI Skill) fail simultaneously
 - **THEN** each connector logs its own structured error with independent context
 - **AND** the catalog backend remains operational for non-AI entities
 - **AND** no cross-connector retry storms or deadlocks occur
