@@ -83,10 +83,19 @@ jest.mock('./Catalog', () => ({
 }));
 
 jest.mock('./KServe', () => ({
-  callBackstagePrinters: jest.fn().mockResolvedValue({
-    models: [{ name: 'test-model' }],
-    modelServer: { name: 'test-server' },
-  }),
+  callBackstagePrinters: jest
+    .fn()
+    .mockImplementation(
+      (_owner: string, _lifecycle: string, is: InferenceService) =>
+        Promise.resolve({
+          models: [{ name: 'test-model' }],
+          modelServer: {
+            name: 'test-server',
+            owner:
+              is.metadata.annotations?.['rhdh.io/owner'] ?? 'default-owner',
+          },
+        }),
+    ),
 }));
 
 import {
@@ -791,7 +800,18 @@ describe('InformerService', () => {
       });
 
       const config: ReconcilerConfig = {};
-      await setupInformer(config, logger);
+      const previousPollingInterval = process.env.POLLING_INTERVAL;
+      process.env.POLLING_INTERVAL = '1';
+      try {
+        await setupInformer(config, logger);
+        await jest.advanceTimersByTimeAsync(1);
+      } finally {
+        if (previousPollingInterval === undefined) {
+          delete process.env.POLLING_INTERVAL;
+        } else {
+          process.env.POLLING_INTERVAL = previousPollingInterval;
+        }
+      }
 
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining('CRD not available (404)'),
