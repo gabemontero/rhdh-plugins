@@ -722,7 +722,7 @@ describe('InformerService', () => {
         'LLMInferenceService Informer error',
         expect.any(Error),
       );
-      jest.runAllTimers();
+      jest.advanceTimersByTime(5000);
       // 2 starts from setup + 1 restart triggered by error handler
       expect(mockInformerStart).toHaveBeenCalledTimes(3);
     });
