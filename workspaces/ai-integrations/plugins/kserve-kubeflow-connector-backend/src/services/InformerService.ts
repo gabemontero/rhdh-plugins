@@ -119,6 +119,48 @@ async function getAuthentication(
   return false;
 }
 
+// If the URL is not set, see if a k8s service is associated with the inferenceserivce / llminferenceservice
+// and grab its internal cluster svc URL
+async function getServiceURL(
+  coreClient: k8s.CoreV1Api | undefined,
+  namespace: string,
+  inferenceServiceName: string,
+  logger: LoggerService,
+  kind: string = 'InferenceService',
+): Promise<string> {
+  if (!coreClient) {
+    logger.debug(
+      `getServiceURL: No coreClient available for ${namespace}/${inferenceServiceName}`,
+    );
+    return '';
+  }
+
+  try {
+    const response = await coreClient.listNamespacedService(namespace);
+    const matchingService = response.body.items.find(item =>
+      item.metadata?.ownerReferences?.some(
+        ref => ref.kind === kind && ref.name === inferenceServiceName,
+      ),
+    );
+
+    if (matchingService) {
+      logger.debug(
+        `getServiceURL: Found Service with ${kind} owner reference for ${namespace}/${matchingService.metadata?.name}`,
+      );
+      const firstPort = matchingService.spec?.ports?.[0];
+      if (firstPort) {
+        return `${firstPort.appProtocol}://${matchingService.metadata?.name}.${matchingService.metadata?.namespace}:${firstPort.port}`;
+      }
+    }
+  } catch (error) {
+    logger.error(
+      `getServiceURL: Error listing ServiceAccounts for ${namespace}/${inferenceServiceName}`,
+      error as Error,
+    );
+  }
+  return '';
+}
+
 // First tries the informer cache, then falls back to API if cache is empty
 async function listInferenceServices(
   client: k8s.CustomObjectsApi,
@@ -310,6 +352,22 @@ async function reconcileInferenceService(
   const kind = isLLM ? 'LLMInferenceService' : 'InferenceService';
 
   logger.debug(`Reconciling ${kind}: ${namespace}/${name}`);
+
+  // adjust URL if svc present but URL field in status unset
+  if (is.status) {
+    if (is.status.url === undefined) {
+      const svcURL = await getServiceURL(
+        config.coreClient,
+        namespace,
+        name,
+        logger,
+        kind,
+      );
+      if (svcURL.length > 0) {
+        is.status.url = svcURL;
+      }
+    }
+  }
 
   const ready = isLLM
     ? isLLMInferenceServiceReady(is, logger)
@@ -526,6 +584,23 @@ async function innerStart(
         is.metadata.namespace,
         is.metadata.name,
       );
+
+      // adjust URL if svc present but URL field in status unset
+      if (is.status) {
+        if (is.status.url === undefined) {
+          const svcURL = await getServiceURL(
+            config.coreClient,
+            is.metadata.namespace,
+            is.metadata.name,
+            logger,
+            'InferenceService',
+          );
+          if (svcURL.length > 0) {
+            is.status.url = svcURL;
+          }
+        }
+      }
+
       if (isInferenceServiceReady(is, logger)) {
         logger.debug(
           `innerStart: Adding importKey ${importKey} for ready KServe InferenceService ${is.metadata.namespace}/${is.metadata.name}`,
@@ -571,6 +646,23 @@ async function innerStart(
         is.metadata.namespace,
         is.metadata.name,
       );
+
+      // adjust URL if svc present but URL field in status unset
+      if (is.status) {
+        if (is.status.url === undefined) {
+          const svcURL = await getServiceURL(
+            config.coreClient,
+            is.metadata.namespace,
+            is.metadata.name,
+            logger,
+            'LLMInferenceService',
+          );
+          if (svcURL.length > 0) {
+            is.status.url = svcURL;
+          }
+        }
+      }
+
       logger.debug(
         `innerStart: Adding importKey ${importKey} for KServe LLMInferenceService ${is.metadata.namespace}/${is.metadata.name}`,
       );
