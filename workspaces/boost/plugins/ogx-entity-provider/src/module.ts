@@ -36,6 +36,21 @@ const DEFAULT_MODEL_REFRESH_SECONDS = 60;
 const DEFAULT_AGENT_REFRESH_SECONDS = 300;
 
 /**
+ * Read an optional string while treating empty environment substitutions as
+ * absent. Backstage's ConfigReader throws for empty-string values.
+ */
+function safeGetOptionalString(
+  config: { getOptionalString(key: string): string | undefined },
+  key: string,
+): string | undefined {
+  try {
+    return config.getOptionalString(key);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Catalog backend module that registers OGX entity providers.
  *
  * Independently deployable as an RHDH dynamic plugin — emits a model
