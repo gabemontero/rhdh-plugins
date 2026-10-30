@@ -90,3 +90,7 @@
 {"ts":"2026-10-30T14:50:17Z","phase":"any","event":"turn.start","input":"Commit the OpenSpec-only changes, then run a final independent OpenSpec audit."}
 {"ts":"2026-10-30T14:50:17Z","phase":"any","event":"skill.invoked","name":"openspec-audit-change"}
 {"ts":"2026-10-30T14:50:17Z","phase":"any","event":"skill.invoked","name":"openspec-journal"}
+{"ts":"2026-10-30T14:56:12Z","phase":"any","event":"agent.spawned","kind":"post-commit-openspec-audit","count":1}
+{"ts":"2026-10-30T15:00:06Z","phase":"authoring","event":"artifact.revised","ref":"audit.md","input":"Record the requested post-commit audit.","output":"Final independent A-H audit passed with zero findings at 2026-10-30T14:59:45Z."}
+{"ts":"2026-10-30T15:00:07Z","phase":"any","event":"turn.end","output":"Committed the OpenSpec updates and completed a clean post-commit independent audit; no code changes."}
+{"ts":"2026-10-30T15:00:07Z","phase":"any","event":"handoff","input":"Record the final post-commit audit outcome.","output":"Audit clean; recording the updated audit report and journal in a follow-up docs commit."}
