@@ -12,9 +12,8 @@ documents, not long-lived canonical specifications.
 
 [RHDHPLAN-1885](https://redhat.atlassian.net/browse/RHDHPLAN-1885) evaluates
 OpenClaw Enterprise and identifies catalog surfacing as a possible RHDH
-integration. The issue describes an evaluation spike and lists production
-implementation as out of scope. This change captures a separate,
-demo-oriented prototype, not an adoption decision.
+integration. This change is an in-scope evaluation prototype: it is not a
+production implementation, an RHDH 2.2 deliverable, or an adoption decision.
 
 The integration notes in the OpenClaw Enterprise checkout describe OCC's REST
 API, its OpenAPI 3.1 document at
@@ -120,6 +119,13 @@ base URL, disable automatic redirect following, reject all 3xx responses before
 issuing another request, and use a finite request timeout.
 Mark the OCC URL and service-key properties `@visibility backend` in
 `config.d.ts`.
+Parse the base URL with the standard URL API; reject embedded credentials,
+query strings, and fragments. Preserve any configured path prefix, remove
+trailing slashes from its path (the root path is serialized without a slash),
+and use this normalized URL both to resolve OCC endpoints relative to the base
+path and as the value for `backstage.io/managed-by-location`. Join each OCC
+route suffix to the normalized base path after stripping leading slashes from
+the suffix; do not use URL resolution that resets the path prefix.
 For deployments using OCC's private CA, document trust through Node's
 `NODE_EXTRA_CA_CERTS`; do not disable certificate verification.
 
@@ -161,17 +167,23 @@ and follows the current OCC response.
 **Choice:** Map the OCC agent name to `metadata.title`, emit
 `kind: AiResource` and `spec.type: agent`, and preserve source identifiers,
 OCC status, desired runtime state, execution mode, and optional active revision
-as `rhdh.io` annotations. Apply `spec.owner` only from an explicit configured
-default: set it when configured and omit it otherwise. Do not set
-`spec.lifecycle` from OCC runtime status and do not claim
-`backstage.io/source-location`, since the OCC API does not identify the
-agent's source repository. OCC-managed runtime entities are not content-backed;
-the current AiResource extension processor validates OCI source locations only
-when present, and standard catalog ingestion accepts the missing annotation
-(with its normal warning). The provider must not fail a sync because the
-annotation is absent.
+as `rhdh.io` annotations. Follow the workspace's AI-asset conventions with
+`rhdh.io/ai-asset-category: agent` and
+`rhdh.io/ai-asset-source: openclaw-enterprise/<providerInstanceId>`. Set
+`backstage.io/managed-by-location` to `url:<normalized OCC base URL>` as
+informational provenance; the URL normalization and path-prefix rules are
+defined in D3. This annotation is distinct from the mutation `locationKey`.
+Apply `spec.owner` only from an explicit configured default: set it when
+configured and omit it otherwise. Do not set `spec.lifecycle` from OCC runtime
+status and do not claim `backstage.io/source-location`, since the OCC API does
+not identify the agent's source repository. OCC-managed runtime entities are
+not content-backed; the current AiResource extension processor validates OCI
+source locations only when present, and standard catalog ingestion accepts the
+missing annotation (with its normal warning). The provider must not fail a
+sync because the annotation is absent.
 
-Use the lowercase annotation keys `rhdh.io/ai-asset-source`,
+Use the lowercase annotation keys `rhdh.io/ai-asset-category`,
+`rhdh.io/ai-asset-source`, `backstage.io/managed-by-location`,
 `rhdh.io/openclaw-enterprise-agent-id`,
 `rhdh.io/openclaw-enterprise-namespace-id`,
 `rhdh.io/openclaw-enterprise-status`,
@@ -204,12 +216,16 @@ be globally unique for providers emitting AiResource agents. Include the
 instance ID in the generated entity identity. Give each instance a stable,
 unique provider identity and use
 `OpenClawAgentProvider:<providerInstanceId>` as its `locationKey`. The
-Backstage catalog's provider-ownership registry is authoritative: an entity
-reference belongs to one provider bucket, and a provider's full mutation only
-replaces entities in its own bucket. If the catalog reports a candidate
-reference is owned by another provider, treat the sync as failed; do not adopt,
-replace, delete, or rename the other provider's entity. Duplicate candidate
-references also fail the snapshot.
+Backstage `locationKey` determines provider ownership and scopes full
+mutations; it is distinct from the informational
+`backstage.io/managed-by-location` annotation. When a candidate reference is
+already owned under a different location key, the catalog keeps the existing
+entity and logs a conflict warning. `EntityProviderConnection.applyMutation`
+returns no per-entity conflict result, so the provider cannot detect that case
+or treat it as a failed sync. It does not adopt or alter the other provider's
+entity; other candidates in the full mutation follow normal catalog behavior.
+Duplicate candidate references within one snapshot fail validation before any
+mutation.
 
 After a complete valid agent response, apply a full mutation for that
 locationKey. A failed request, unresolved namespace, or invalid response
@@ -273,16 +289,36 @@ rejected because catalog cleanup must not mutate OpenClaw agents. Relying on
 module uninstall or config removal to trigger cleanup was rejected because a
 removed provider cannot submit a final catalog mutation.
 
+### D9 — Use a standard scheduled refresh and log stale snapshots
+
+**Choice:** Each enabled instance uses Backstage's `SchedulerService` with the
+configured schedule when present. If omitted, default to a ten-minute
+frequency, ten-minute timeout, and `initialDelay: 0`, which schedules the first
+attempt immediately. Honor an explicitly configured `initialDelay`. A failed
+required request or invalid snapshot emits a sanitized backend sync error and
+applies no mutation, leaving the last-known-good catalog entities unchanged.
+Do not add a catalog sync-freshness annotation; backend logs are the freshness
+signal for this prototype, while the OpenClaw status annotation remains runtime
+state. If an explicit schedule sets `frequency: { trigger: manual }`, the
+provider does not run automatically; an operator must trigger it through the
+Backstage scheduler.
+
+**Alternatives:** Requiring a schedule was rejected because the provider has a
+workspace-aligned default. Publishing stale entities with a freshness marker
+was deferred because it would require reading and republishing retained
+catalog entities after a failed refresh.
+
 ## Risks / Trade-offs
 
-| Risk                                                                                       | Mitigation                                                                                                                                              |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OCC's API and OpenAPI contract are early and may change.                                   | Pin and record the source revision, regenerate types deliberately, and cover the consumed response shapes with client/provider tests.                   |
-| The bootstrap OCC key may grant broad permissions.                                         | Use a dedicated least-privilege service key and keep it in backend secret configuration only.                                                           |
-| Private CA trust differs across development and OCP environments.                          | Document the CA bundle setup and retain normal TLS certificate verification.                                                                            |
-| Ephemeral deployments can replace namespace and agent IDs.                                 | Resolve namespace IDs every refresh and keep identity scoped to the current OCC IDs; replacement deployments may produce new catalog identities.        |
-| A computed browser-chat URL may not have a Route or authenticated browser session.         | Make links optional, emit them only for active agents, and do not treat link availability as sync success.                                              |
-| Full mutation can delete entities if an incomplete response is mistaken for an empty list. | Validate the namespace state, response envelope, and every projected agent before mutation; only a successful empty array is authoritative empty state. |
+| Risk                                                                                       | Mitigation                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| OCC's API and OpenAPI contract are early and may change.                                   | Pin and record the source revision, regenerate types deliberately, and cover the consumed response shapes with client/provider tests.                              |
+| The bootstrap OCC key may grant broad permissions.                                         | Use a dedicated least-privilege service key and keep it in backend secret configuration only.                                                                      |
+| Private CA trust differs across development and OCP environments.                          | Document the CA bundle setup and retain normal TLS certificate verification.                                                                                       |
+| Ephemeral deployments can replace namespace and agent IDs.                                 | Resolve namespace IDs every refresh and keep identity scoped to the current OCC IDs; replacement deployments may produce new catalog identities.                   |
+| A computed browser-chat URL may not have a Route or authenticated browser session.         | Make links optional, emit them only for active agents, and do not treat link availability as sync success.                                                         |
+| Full mutation can delete entities if an incomplete response is mistaken for an empty list. | Validate the namespace state, response envelope, and every projected agent before mutation; only a successful empty array is authoritative empty state.            |
+| Backstage does not return per-entity ownership conflicts from provider mutations.          | Use deterministic provider-scoped identity, preserve foreign-owned entities according to catalog behavior, and document backend logs as the sync-freshness signal. |
 
 ## Migration Plan
 

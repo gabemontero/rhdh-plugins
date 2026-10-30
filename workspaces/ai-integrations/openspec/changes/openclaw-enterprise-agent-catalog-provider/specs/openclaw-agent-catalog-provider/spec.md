@@ -8,13 +8,27 @@ automatic redirect following, and reject every redirect response before
 issuing another request. It SHALL NOT expose or log the key. Agent records
 SHALL be constructed from an explicit metadata allowlist and SHALL NOT include
 OCC credentials, service-principal data, prompts, configuration values,
-repository access, or credential-source references.
+repository access, or credential-source references. The configured base URL
+SHALL be parsed as an absolute HTTPS URL with no embedded credentials, query,
+or fragment. Normalization SHALL preserve a configured path prefix and remove
+trailing slashes from its path, with the root path serialized without a slash;
+the client SHALL append OCC route suffixes to this normalized base path after
+stripping leading slashes from the suffix, preserving the configured prefix.
+It SHALL NOT resolve slash-prefixed routes in a way that resets the path to the
+URL origin.
 
 #### Scenario: Provider authenticates to OCC
 
 - **WHEN** a configured provider requests namespace or agent data
 - **THEN** the backend sends its configured service key as `x-api-key` and no
   browser request contains that key
+
+#### Scenario: OCC endpoint requests preserve a base-path prefix
+
+- **WHEN** the configured OCC base URL is `https://occ.example.com/control/api/`
+- **THEN** a request for `/namespaces` is sent to
+  `https://occ.example.com/control/api/namespaces`, and the normalized
+  `backstage.io/managed-by-location` value preserves `https://occ.example.com/control/api`
 
 #### Scenario: OCC returns additional configuration fields
 
@@ -72,10 +86,15 @@ fail entity construction because that annotation is absent. The existing
 AiResource extension processor validates OCI source-location values when
 present; the standard catalog may emit its normal missing-source warning.
 
-The provider SHALL preserve the OCC agent ID and namespace ID in
+The provider SHALL set `rhdh.io/ai-asset-category: agent` and expose the source
+as `rhdh.io/ai-asset-source: openclaw-enterprise/<providerInstanceId>`. It SHALL
+set `backstage.io/managed-by-location` to `url:<normalized OCC base URL>` as
+informational source provenance, separate from provider ownership. Its
+normalized URL SHALL preserve any configured path prefix and omit trailing
+slashes. It SHALL
+preserve the OCC agent ID and namespace ID in
 `rhdh.io/openclaw-enterprise-agent-id` and
-`rhdh.io/openclaw-enterprise-namespace-id`. It SHALL expose the source as
-`rhdh.io/ai-asset-source: openclaw-enterprise`, and SHALL map OCC `status`,
+`rhdh.io/openclaw-enterprise-namespace-id`, and SHALL map OCC `status`,
 `desiredRuntimeState`, `executionMode`, and a present `activeRevisionId` to
 `rhdh.io/openclaw-enterprise-status`,
 `rhdh.io/openclaw-enterprise-desired-runtime-state`,
@@ -138,14 +157,19 @@ IDs SHALL be unique within a response. A missing or mistyped required field, a
 duplicate agent ID, or a namespace-ID mismatch SHALL fail the whole snapshot;
 the provider SHALL NOT skip the invalid record or submit a partial full
 mutation. The provider identity SHALL be stable and unique for each configured
-instance, and the Catalog's provider-ownership registry SHALL be authoritative
-for whether an entity reference belongs to this provider. A reference already
-owned by another provider SHALL cause the Catalog to reject the mutation; the
-provider SHALL treat that as a failed sync and SHALL NOT adopt, replace, delete,
-or rename the other provider's entity. Duplicate candidate entity references
-within one snapshot SHALL also fail the snapshot. Failure (including transport or
-authentication failure) of a required namespace or agent-list request, or
-response validation, SHALL preserve the last successfully published entities.
+instance. If a candidate entity reference is already owned under another
+`locationKey`, the Catalog SHALL retain the existing entity and log a conflict
+warning. Since `EntityProviderConnection.applyMutation` returns no per-entity
+conflict result, the provider SHALL NOT claim to detect the conflict or treat
+it as a failed sync; other candidates in the full mutation follow normal
+Catalog behavior. The provider SHALL NOT adopt or alter the other provider's
+entity. Duplicate candidate entity references within one snapshot SHALL fail
+validation before mutation. Failure (including transport or authentication
+failure) of a required namespace or agent-list request, or response validation,
+SHALL preserve the last successfully published entities and SHALL be reported
+through a sanitized backend sync error. The provider SHALL NOT republish retained
+entities solely to attach a sync-freshness annotation; freshness is not shown on
+the catalog entity.
 Failure of the optional `GET
 /installation` lookup, including an authorization failure, SHALL omit chat
 links but SHALL NOT prevent mutation of a complete valid agent snapshot. A
@@ -185,10 +209,11 @@ Provider instances SHALL therefore have distinct location keys.
 
 #### Scenario: Candidate identity belongs to another provider
 
-- **WHEN** the Catalog reports that a candidate `(kind, namespace, name)` is
-  already owned by another provider
-- **THEN** the provider treats the mutation as failed, leaves the other entity
-  untouched, and preserves its last successful entities
+- **WHEN** a candidate `(kind, namespace, name)` is already owned under a
+  different `locationKey`
+- **THEN** the Catalog retains that entity and logs a conflict warning, the
+  provider does not adopt or alter it, and the provider connection returns no
+  per-entity conflict result
 
 #### Scenario: Provider instance IDs determine ownership keys
 
@@ -198,17 +223,39 @@ Provider instances SHALL therefore have distinct location keys.
 
 ### Requirement: Refresh on the Backstage schedule
 
-Each enabled provider instance SHALL perform an initial refresh when connected
-to the catalog and SHALL repeat refreshes using its configured Backstage
-scheduler schedule. A failed refresh SHALL be reported without stopping future
-scheduled attempts. A disabled instance SHALL submit an empty full mutation for
-its location key during initialization, SHALL NOT call OCC, and SHALL NOT start
-a refresh schedule.
+Each enabled provider instance SHALL schedule refreshes through Backstage's
+`SchedulerService`. If no schedule is configured, it SHALL use a ten-minute
+frequency, ten-minute timeout, and `initialDelay: 0`; this default SHALL start
+the first refresh immediately after connection. An explicitly configured
+schedule SHALL be honored, including its `initialDelay`. A failed refresh SHALL
+be reported through a sanitized backend sync error without stopping future
+scheduled attempts. The provider SHALL NOT add a catalog sync-freshness
+annotation when retaining last-known-good entities. A disabled instance SHALL
+submit an empty full mutation for its location key during initialization, SHALL
+NOT call OCC, and SHALL NOT start a refresh schedule.
 
 #### Scenario: Scheduled refresh recovers after an outage
 
 - **WHEN** an OCC refresh fails and a later scheduled request succeeds
 - **THEN** the provider reconciles the new complete snapshot on that later run
+
+#### Scenario: Default schedule starts an initial refresh immediately
+
+- **WHEN** an enabled provider instance has no explicit schedule configured
+- **THEN** it uses a ten-minute frequency and timeout with `initialDelay: 0`
+  and starts its first refresh immediately after connecting to the Catalog
+
+#### Scenario: Configured schedule controls the first run
+
+- **WHEN** an enabled provider instance has a Backstage schedule configured
+- **THEN** it uses that schedule, including any configured `initialDelay`, for
+  its initial and recurring refreshes
+
+#### Scenario: Manual schedule waits for an operator trigger
+
+- **WHEN** an enabled provider instance uses `frequency: { trigger: manual }`
+- **THEN** it does not refresh automatically and runs only after a manual
+  trigger through the Backstage scheduler
 
 #### Scenario: Disabled instance cleans up catalog entities
 

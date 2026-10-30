@@ -61,3 +61,32 @@
 {"ts":"2026-10-29T21:13:04Z","phase":"any","event":"decision","input":"Resolve configured OCC namespaces safely.","output":"Require exactly one exact-name namespace match across all statuses and require that record to be ready."}
 {"ts":"2026-10-29T21:13:04Z","phase":"any","event":"turn.end","output":"Resolved audit findings, reran the independent audit with no findings, and confirmed strict OpenSpec validation and journal checks pass."}
 {"ts":"2026-10-29T21:13:04Z","phase":"any","event":"handoff","input":"Audit remediation and re-audit complete.","output":"The latest audit report is clean and current."}
+{"ts":"2026-10-30T14:15:09Z","phase":"any","event":"turn.start","input":"Apply accepted design review decisions to OpenSpec artifacts only; no code changes."}
+{"ts":"2026-10-30T14:15:15Z","phase":"any","event":"skill.invoked","name":"openspec-audit-change"}
+{"ts":"2026-10-30T14:15:15Z","phase":"any","event":"skill.invoked","name":"openspec-journal"}
+{"ts":"2026-10-30T14:21:27Z","phase":"any","event":"decision","input":"Keep one direct OCC provider for this evaluation prototype.","output":"One source and consumer do not justify the OCI-style connector/common-provider split yet."}
+{"ts":"2026-10-30T14:21:27Z","phase":"any","event":"decision","input":"Align provider conflict handling with Backstage's observable behavior.","output":"Catalog retains foreign-owned refs and logs conflicts; applyMutation does not return a conflict result."}
+{"ts":"2026-10-30T14:21:27Z","phase":"any","event":"decision","input":"Define workspace-aligned refresh defaults.","output":"Default to 10-minute frequency/timeout and initialDelay 0; honor configured schedule overrides."}
+{"ts":"2026-10-30T14:21:28Z","phase":"any","event":"decision","input":"Adopt workspace AI-asset provenance and freshness conventions.","output":"Add agent/source/managed-by-location annotations; sanitized backend logs are the only sync-freshness signal."}
+{"ts":"2026-10-30T14:21:28Z","phase":"authoring","event":"artifact.revised","ref":"proposal.md","input":"Record accepted scope and provenance decisions.","output":"Clarified in-scope evaluation prototype, no RHDH 2.2 shipping, and AI-asset provenance."}
+{"ts":"2026-10-30T14:21:28Z","phase":"authoring","event":"artifact.revised","ref":"design.md","input":"Record accepted design review decisions.","output":"Aligned catalog conflicts, provenance, schedule defaults, freshness signaling, and 2.2 scope."}
+{"ts":"2026-10-30T14:21:28Z","phase":"authoring","event":"artifact.revised","ref":"specs/openclaw-agent-catalog-provider/spec.md","input":"Record accepted behavior decisions.","output":"Specified provenance annotations, observable conflict behavior, and schedule/freshness semantics."}
+{"ts":"2026-10-30T14:21:29Z","phase":"authoring","event":"artifact.revised","ref":"tasks.md","input":"Make implementation work match accepted decisions.","output":"Added new-backend entry contract, provenance, schedule, conflict, and README tasks."}
+{"ts":"2026-10-30T14:28:59Z","phase":"any","event":"decision","input":"Make OCC provenance URLs deterministic.","output":"Use WHATWG URL normalization, preserve path prefixes, reject userinfo/query/fragment, and remove trailing path slashes."}
+{"ts":"2026-10-30T14:29:00Z","phase":"authoring","event":"artifact.revised","ref":"design.md","input":"Resolve audit findings and clarify Backstage schedule modes.","output":"Defined deterministic OCC URL normalization and manual-trigger schedule behavior."}
+{"ts":"2026-10-30T14:29:00Z","phase":"authoring","event":"artifact.revised","ref":"specs/openclaw-agent-catalog-provider/spec.md","input":"Resolve audit findings and align schedule behavior.","output":"Specified normalized source URLs and manual-trigger scheduling semantics."}
+{"ts":"2026-10-30T14:29:00Z","phase":"authoring","event":"artifact.revised","ref":"tasks.md","input":"Resolve audit findings and break up oversized test coverage.","output":"Split provider tests into bounded tasks and added URL/schedule mode coverage."}
+{"ts":"2026-10-30T14:29:08Z","phase":"any","event":"agent.spawned","kind":"independent-openspec-audit","count":1}
+{"ts":"2026-10-30T14:32:26Z","phase":"any","event":"decision","input":"Preserve OCC base paths when joining API routes.","output":"Append route suffixes to the normalized base path after stripping leading slashes; never reset to origin."}
+{"ts":"2026-10-30T14:32:26Z","phase":"authoring","event":"artifact.revised","ref":"design.md","input":"Resolve the second audit finding.","output":"Defined OCC route joining that preserves configured base-path prefixes."}
+{"ts":"2026-10-30T14:32:26Z","phase":"authoring","event":"artifact.revised","ref":"specs/openclaw-agent-catalog-provider/spec.md","input":"Resolve the second audit finding.","output":"Specified prefix-preserving route joins and added a concrete request scenario."}
+{"ts":"2026-10-30T14:32:27Z","phase":"authoring","event":"artifact.revised","ref":"tasks.md","input":"Resolve the second audit finding.","output":"Added base-path joining implementation and client-test coverage."}
+{"ts":"2026-10-30T14:32:36Z","phase":"any","event":"agent.spawned","kind":"independent-openspec-audit-final","count":1}
+{"ts":"2026-10-30T14:35:48Z","phase":"any","event":"agent.spawned","kind":"independent-openspec-audit","count":1}
+{"ts":"2026-10-30T14:35:48Z","phase":"authoring","event":"artifact.revised","ref":"audit.md","input":"Write the final independent audit result.","output":"Recorded the final A-H audit with zero findings at the current UTC time."}
+{"ts":"2026-10-30T14:35:48Z","phase":"any","event":"turn.end","output":"Updated OpenSpec only; strict validation and final independent audit pass with no findings."}
+{"ts":"2026-10-30T14:35:49Z","phase":"any","event":"handoff","input":"Finish the accepted OpenClaw OpenSpec design review.","output":"OpenSpec artifacts updated and audit clean; no implementation code changed."}
+{"ts":"2026-10-30T14:50:16Z","phase":"any","event":"handoff","input":"Resume to commit the reviewed OpenClaw OpenSpec updates.","output":"Will commit only OpenSpec files, then run the requested final audit."}
+{"ts":"2026-10-30T14:50:17Z","phase":"any","event":"turn.start","input":"Commit the OpenSpec-only changes, then run a final independent OpenSpec audit."}
+{"ts":"2026-10-30T14:50:17Z","phase":"any","event":"skill.invoked","name":"openspec-audit-change"}
+{"ts":"2026-10-30T14:50:17Z","phase":"any","event":"skill.invoked","name":"openspec-journal"}
