@@ -55,8 +55,9 @@ flowchart LR
   OpenClaw status metadata without importing agent configuration or secrets.
 - Preserve catalog state through OCC outages and malformed or incomplete
   responses; remove entities only after a complete successful snapshot.
-- Make an active agent's browser-chat link available when the operator
-  configures the deployment's native-admin domain.
+- Add an OCC console/login link to each imported agent and make an active
+  agent's browser-chat link available when the operator configures the
+  deployment's native-admin domain.
 
 **Non-Goals:**
 
@@ -99,10 +100,15 @@ The generated declarations provide compile-time types, not runtime validation.
 The client boundary will validate the response envelope and the pinned
 OpenAPI-required fields used by namespace selection and agent projection,
 including the two agent-list variants (readable configuration and
-`configurationReadError`). Optional fields such as `activeRevisionId` may be
-absent and are omitted from the entity when absent. Unknown properties are
-ignored and never projected, including future or sensitive OCC configuration
-properties.
+`configurationReadError`). Both variants require `backendId`, which may be a
+string or `null`; the `configurationReadError` variant additionally requires
+its error object. The live OCE response omitted `gatewayManagedMode`; since
+the provider does not project that setting, runtime validation accepts its
+absence and requires a boolean when present. This compatibility exception does
+not relax required `backendId` or other consumed fields. Optional fields such
+as `activeRevisionId` may be absent and are omitted from the entity when
+absent. Unknown properties are ignored and never projected, including future
+or sensitive OCC configuration properties.
 
 **Alternatives:** Hand-maintained request and response types were rejected
 because they would drift from OCC's source contract. Importing a private OCC
@@ -169,21 +175,28 @@ and follows the current OCC response.
 OCC status, desired runtime state, execution mode, and optional active revision
 as `rhdh.io` annotations. Follow the workspace's AI-asset conventions with
 `rhdh.io/ai-asset-category: agent` and
-`rhdh.io/ai-asset-source: openclaw-enterprise/<providerInstanceId>`. Set
-`backstage.io/managed-by-location` to `url:<normalized OCC base URL>` as
-informational provenance; the URL normalization and path-prefix rules are
-defined in D3. This annotation is distinct from the mutation `locationKey`.
-Apply `spec.owner` only from an explicit configured default: set it when
-configured and omit it otherwise. Do not set `spec.lifecycle` from OCC runtime
-status and do not claim `backstage.io/source-location`, since the OCC API does
-not identify the agent's source repository. OCC-managed runtime entities are
-not content-backed; the current AiResource extension processor validates OCI
+`rhdh.io/ai-asset-source: openclaw-enterprise/<providerInstanceId>`. Set both
+`backstage.io/managed-by-location` and
+`backstage.io/managed-by-origin-location` to `url:<normalized OCC base URL>`
+as provenance. They use the same URL because OCC is the direct source and has
+no intervening Catalog Location entity; Backstage processing requires both
+annotations. The URL normalization and path-prefix rules are defined in D3.
+These annotations are distinct from the mutation `locationKey`.
+Each enabled provider instance requires explicit `defaultOwner` and
+`defaultLifecycle` values because the typed agent AiResource contract requires
+both fields. Set `spec.owner` and `spec.lifecycle` from those values; do not
+infer ownership from an OCC service principal or lifecycle from OCC runtime
+status. Do not claim `backstage.io/source-location`, since the OCC API does not
+identify the agent's source repository. OCC-managed runtime entities are not
+content-backed; the current AiResource extension processor validates OCI
 source locations only when present, and standard catalog ingestion accepts the
 missing annotation (with its normal warning). The provider must not fail a
-sync because the annotation is absent.
+sync because the annotation is absent. A disabled provider instance needs only
+its keyed instance ID so it can clean up entities it previously owned.
 
 Use the lowercase annotation keys `rhdh.io/ai-asset-category`,
 `rhdh.io/ai-asset-source`, `backstage.io/managed-by-location`,
+`backstage.io/managed-by-origin-location`,
 `rhdh.io/openclaw-enterprise-agent-id`,
 `rhdh.io/openclaw-enterprise-namespace-id`,
 `rhdh.io/openclaw-enterprise-status`,
@@ -209,8 +222,8 @@ have different meanings.
 `openclaw-agent-<24 hex chars>` from SHA-256 of the configured provider
 instance ID, resolved OCC namespace ID, and agent ID separated by NUL bytes.
 Keep the display name in `metadata.title`; a rename therefore updates the
-title without changing entity identity. Use the configured catalog namespace
-for `metadata.namespace`. The keyed entry under
+title without changing entity identity. Use the configured catalog namespace,
+defaulting to `default`, for `metadata.namespace`. The keyed entry under
 `catalog.providers.openclawAgentProvider` is the provider instance ID and SHALL
 be globally unique for providers emitting AiResource agents. Include the
 instance ID in the generated entity identity. Give each instance a stable,
@@ -246,24 +259,27 @@ are entity data and can be copied. Automatically renaming a colliding entity
 was rejected because it would make catalog identity depend on which source
 synchronized first.
 
-### D7 — Add optional links using the documented native-admin host formula
+### D7 — Add the OCC console link and an optional chat link
 
-**Choice:** When `nativeAdminDomain` is configured and an agent's OCC status is
-`active`, construct a `backstage.io/links` entry. Compute the host label from
-the first 32 lowercase hex characters of
+**Choice:** Always put an `OpenClaw console/login` link first in `metadata.links`
+using the OCC origin (scheme and authority) followed by `/console`; do not
+carry a path prefix from `occApiBaseUrl` into the console URL. When
+`nativeAdminDomain` is configured and an agent's OCC status is `active`, append
+an optional `OpenClaw chat (log in via console link above first)` link using
+the existing model catalog provider's host formula and the Backstage entity
+schema. Compute its host label from the first 32 lowercase hex characters of
 `SHA-256(installationId + NUL + namespaceId + NUL + agentId)`, then use
 `https://agent-<digest>.<nativeAdminDomain>/`.
 
 Do not probe the generated host. OCC installations create per-agent Routes,
 and users need an authenticated OpenClaw browser session; the catalog link is
-informational and its availability depends on deployment setup. Missing link
-prerequisites do not block entity import.
+informational and its availability depends on deployment setup. Missing chat
+link prerequisites do not block entity import or remove the console link.
 
 **Alternatives:** Calling the native-admin status endpoint was rejected because
-it requires a browser session rather than the backend service key. Linking to
-the OCC base URL does not identify an agent's chat host. Probing the derived
-host was rejected because the per-agent Route may not exist and availability
-depends on the user's browser session.
+it requires a browser session rather than the backend service key. Probing the
+derived chat host was rejected because the per-agent Route may not exist and
+availability depends on the user's browser session.
 
 ### D8 — Disable catalog import without deleting OCC agents
 
@@ -337,6 +353,5 @@ entities through the catalog's supported entity-management path.
   `GET /namespaces/{namespaceId}/agents`, and optional `GET /installation` on
   the target OpenClaw Enterprise deployment. Without installation-read access,
   the provider still works but omits chat links.
-- Confirm that the target RHDH catalog UI renders `backstage.io/links` as the
-  desired browser-chat link; the annotation is still useful to other catalog
-  consumers if the UI presentation differs.
+- Confirm that the target RHDH catalog UI renders `metadata.links` as the
+  desired browser-chat link.

@@ -74,11 +74,13 @@ For each valid OCC agent, the provider SHALL emit one `kind: AiResource` entity
 with `spec.type: agent`. `metadata.title` SHALL preserve the OCC agent name.
 `metadata.name` SHALL be deterministic for the configured provider instance,
 OCC namespace, and agent ID, and SHALL remain unchanged when the display name
-changes. The configured catalog namespace SHALL determine
-`metadata.namespace`. When a default owner is configured, the provider SHALL
-set `spec.owner` to that value; when no default owner is configured, it SHALL
-omit `spec.owner`. The provider SHALL NOT infer ownership from an OCC service
-principal.
+changes. The configured catalog namespace, defaulting to `default`, SHALL
+determine `metadata.namespace`. Each enabled provider instance SHALL require
+configured
+`defaultOwner` and `defaultLifecycle` values and SHALL set `spec.owner` and
+`spec.lifecycle` from those values. The provider SHALL NOT infer ownership from
+an OCC service principal or lifecycle from OCC runtime status. A disabled
+instance SHALL require only its keyed provider instance ID for cleanup.
 
 Because OCC does not provide a source repository for these runtime-managed
 agents, the provider SHALL omit `backstage.io/source-location` and SHALL NOT
@@ -88,11 +90,13 @@ present; the standard catalog may emit its normal missing-source warning.
 
 The provider SHALL set `rhdh.io/ai-asset-category: agent` and expose the source
 as `rhdh.io/ai-asset-source: openclaw-enterprise/<providerInstanceId>`. It SHALL
-set `backstage.io/managed-by-location` to `url:<normalized OCC base URL>` as
-informational source provenance, separate from provider ownership. Its
-normalized URL SHALL preserve any configured path prefix and omit trailing
-slashes. It SHALL
-preserve the OCC agent ID and namespace ID in
+set both `backstage.io/managed-by-location` and
+`backstage.io/managed-by-origin-location` to `url:<normalized OCC base URL>` as
+source provenance, separate from provider ownership. Both annotations SHALL
+use the same URL because OCC is the direct source and has no intervening
+Catalog Location entity. The normalized URL SHALL preserve any configured path
+prefix and omit trailing slashes. It SHALL preserve the OCC agent ID and
+namespace ID in
 `rhdh.io/openclaw-enterprise-agent-id` and
 `rhdh.io/openclaw-enterprise-namespace-id`, and SHALL map OCC `status`,
 `desiredRuntimeState`, `executionMode`, and a present `activeRevisionId` to
@@ -106,8 +110,8 @@ state SHALL NOT be represented as catalog lifecycle.
 
 - **WHEN** OCC returns a valid agent from the selected namespace
 - **THEN** the provider emits an `AiResource` with `spec.type: agent`, a stable
-  identity, the OCC name as its title, the allowlisted annotations, and no
-  `backstage.io/source-location`
+  identity, the OCC name as its title, both managed-by provenance annotations,
+  the allowlisted annotations, and no `backstage.io/source-location`
 
 #### Scenario: Distinguish same-named agents
 
@@ -137,19 +141,25 @@ Agent-list responses SHALL have a `data` array and `meta.requestId` string.
 Each agent SHALL match one of the two variants in the pinned OCC contract. Both
 variants require string `id`, `namespaceId`, `name`, `servicePrincipalId`, and
 `configurationId`; `executionMode` in `embedded | dedicated`;
-`gatewayManagedMode` boolean; `desiredRuntimeState` in `running | stopped`;
+`gatewayManagedMode`, when present, as a boolean; `desiredRuntimeState` in
+`running | stopped`;
 `status` in `active | deleting`; and UTC date-time `createdAt` string. The
 readable-configuration variant additionally requires `backendId` (string or
 null) and `harnessAuth` (object or null). The
-`configurationReadError` variant requires a `configurationReadError` object;
-`backendId` may be absent, and when present SHALL be a string or null.
-Only in the `configurationReadError` variant may configuration fields
-including `harnessAuth`, `plugins`, `pluginApprovers`, `repositoryBindings`,
-`repositoryAccess`, and `credentialSources` be absent. `activeRevisionId` is an optional string in
-either variant and SHALL be omitted from the entity when absent. The runtime
+`configurationReadError` variant requires a `configurationReadError` object
+and a `backendId` field whose value SHALL be a string or null.
+The `configurationReadError` variant may omit configuration fields including
+`harnessAuth`, `plugins`, `pluginApprovers`, `repositoryBindings`,
+`repositoryAccess`, and `credentialSources`; other optional fields SHALL be
+validated only when required by the pinned OpenAPI contract. These fields and
+all unknown properties SHALL be ignored during entity projection.
+`activeRevisionId` is an optional string in either variant and SHALL be omitted
+from the entity when absent. The runtime
 validator SHALL enforce the pinned contract's types, enum values,
 length/pattern constraints, and date-time constraints for required fields,
-while ignoring unknown properties.
+while ignoring unknown properties. Because `gatewayManagedMode` is not
+projected and deployed OCC responses may omit it, its absence SHALL NOT fail
+snapshot validation; a present non-boolean value SHALL fail validation.
 Unknown properties SHALL NOT be copied into the entity.
 
 Every agent's `namespaceId` SHALL equal the resolved namespace ID, and agent
@@ -206,6 +216,12 @@ Provider instances SHALL therefore have distinct location keys.
   agent ID in the response
 - **THEN** the provider submits no full mutation and preserves the prior
   entities for that instance
+
+#### Scenario: OCC omits the unprojected gateway-managed setting
+
+- **WHEN** an otherwise valid agent record omits `gatewayManagedMode`
+- **THEN** the provider validates and imports the complete snapshot
+- **AND** a present non-boolean `gatewayManagedMode` still fails validation
 
 #### Scenario: Candidate identity belongs to another provider
 
@@ -276,31 +292,36 @@ NOT call OCC, and SHALL NOT start a refresh schedule.
 - **THEN** the operator first retains the old keyed entry with `enabled: false`
   until its empty full mutation completes, then configures the new ID
 
-### Requirement: Add optional links to active OpenClaw agents
+### Requirement: Link to the OCC console and optionally to active agents
 
-When a valid native-admin domain is configured, the provider SHALL retrieve
-the installation ID from `GET /installation` and add a `backstage.io/links`
-entry for each OCC agent whose status is `active`. The URL SHALL use the
-OpenClaw Enterprise host derivation from the design. If the domain or
-installation ID is unavailable, or the agent is not active, the entity SHALL
-omit the link without preventing its catalog import. Link generation SHALL
-NOT probe the agent host.
+Each imported OCC agent SHALL have a `metadata.links` entry titled
+`OpenClaw console/login` first in the array. Its URL SHALL be the normalized
+OCC origin (scheme and authority) followed by `/console`; a path prefix on
+`occApiBaseUrl` SHALL NOT be included. When a valid native-admin domain is
+configured, the provider SHALL retrieve the installation ID from
+`GET /installation` and append an `OpenClaw chat (log in via console link
+above first)` link for each OCC agent whose status is `active`. The chat URL
+SHALL use the OpenClaw Enterprise host derivation from the design. If the
+domain or installation ID is unavailable, or the agent is not active, the
+entity SHALL omit only the chat link without preventing its catalog import.
+Link generation SHALL NOT probe the agent host.
 
 #### Scenario: Active agent has chat-link configuration
 
 - **WHEN** an imported agent is active and the installation ID and valid
   native-admin domain are available
-- **THEN** its entity includes a `backstage.io/links` entry for its derived
-  browser-chat URL
+- **THEN** its `metadata.links` begins with the OCC console/login link and then
+  includes the derived browser-chat URL
 
 #### Scenario: Chat-link prerequisites are unavailable
 
 - **WHEN** no native-admin domain is configured, the installation lookup fails,
   including an authorization failure, or an agent is not active
-- **THEN** its entity is still imported without a browser-chat link
+- **THEN** its entity is still imported with only the OCC console/login link
 
 #### Scenario: Optional installation lookup is unauthorized
 
 - **WHEN** the required namespace and agent reads succeed but `GET
 /installation` is unauthorized
-- **THEN** the provider imports the agents without chat links
+- **THEN** the provider imports the agents with their OCC console/login links
+  and without chat links

@@ -23,8 +23,9 @@ decision.
   entities when discovery or validation fails.
 - Follow the workspace's AI-asset provenance conventions and expose the OCC
   source provenance separately from provider `locationKey` ownership.
-- Support optional links to active agents' browser chat pages when the
-  deployment's native-admin domain is configured.
+- Add an OCC console/login link to every imported agent and support an
+  optional browser-chat link for active agents when the deployment's
+  native-admin domain is configured.
 - Provide an explicit disable-and-cleanup path for provider-owned catalog
   entities that leaves the OpenClaw agents themselves untouched.
 

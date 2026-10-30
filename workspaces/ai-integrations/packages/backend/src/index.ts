@@ -99,6 +99,11 @@ backend.add(
 );
 backend.add(
   import(
+    '@red-hat-developer-hub/backstage-plugin-catalog-backend-module-openclaw-agent-provider'
+  ),
+);
+backend.add(
+  import(
     '@red-hat-developer-hub/backstage-plugin-kserve-kubeflow-connector-backend'
   ),
 );

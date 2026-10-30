@@ -185,6 +185,21 @@ catalog:
         #   timeout: { minutes: 3 }
         #   # Optional: defer the first sync
         #   # initialDelay: { seconds: 15 }
+    openclawAgentProvider:
+      # Local OCE integration test. Keep the service key in the process
+      # environment; never put its value in app-config.yaml.
+      oce-dev:
+        occApiBaseUrl: https://occ.apps.gmontero422.rhdh-pai.devfile-ci.com
+        serviceKey: '${OCC_SERVICE_KEY}'
+        namespaceName: default
+        catalogNamespace: default
+        defaultOwner: group:default/team-ml-platform
+        defaultLifecycle: production
+        nativeAdminDomain: apps.gmontero422.rhdh-pai.devfile-ci.com
+        schedule:
+          frequency: { minutes: 1 }
+          timeout: { minutes: 2 }
+          initialDelay: { seconds: 0 }
     skillsCatalogProvider:
       experimental:
         sources:
