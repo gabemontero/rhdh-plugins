@@ -1,0 +1,1 @@
+I'll start you on the next set up (which gets into the unresolved decisions you noted, rework of https://redhat.atlassian.net/browse/RHIDP-15294 and use of https://backstage.io/docs/features/software-catalog/external-integrations/incremental-entity-providers as part of delta sync framework, which will result in more openspecs, epics, etc. ) 
