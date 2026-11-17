@@ -129,27 +129,4 @@ describe('OccClient', () => {
     expect(requestSignal?.aborted).toBe(true);
     jest.useRealTimers();
   });
-
-  it('sanitizes unauthorized installation lookup errors', async () => {
-    const body = { error: { message: 'response body must not leak' } };
-    const fetchImpl = jest.fn(async (_request: Request, _init?: RequestInit) =>
-      response(body, 401),
-    );
-    const client = new OccClient({
-      baseUrl: 'https://occ.example.com/api',
-      serviceKey: 'top-secret-service-key',
-      fetchImpl,
-    });
-
-    let failure: Error | undefined;
-    try {
-      await client.getInstallationId();
-    } catch (error) {
-      failure = error as Error;
-    }
-    expect(failure?.message).toBe('OCC request failed with HTTP 401');
-    expect(failure?.message).not.toContain('response body must not leak');
-    expect(failure?.message).not.toContain('top-secret-service-key');
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-  });
 });

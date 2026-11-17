@@ -55,9 +55,8 @@ flowchart LR
   OpenClaw status metadata without importing agent configuration or secrets.
 - Preserve catalog state through OCC outages and malformed or incomplete
   responses; remove entities only after a complete successful snapshot.
-- Add an OCC console/login link to each imported agent and make an active
-  agent's browser-chat link available when the operator configures the
-  deployment's native-admin domain.
+- Add an OCC console/login link to each imported agent and allow the operator
+  to configure an optional browser URL for active agents.
 
 **Non-Goals:**
 
@@ -135,11 +134,16 @@ the suffix; do not use URL resolution that resets the path prefix.
 For deployments using OCC's private CA, document trust through Node's
 `NODE_EXTRA_CA_CERTS`; do not disable certificate verification.
 
-The optional native-admin domain is validated as a hostname, not accepted as a
-URL. The HTTP client disables automatic redirect following and rejects every
-3xx response before issuing another request; a redirect target therefore
-cannot receive the service key. No secret, request header, or raw response
-object is included in a log or catalog entity.
+For enabled provider instances, the optional `agentUrl` is normalized as a
+full absolute HTTPS URL; it may include a path, but must not include
+credentials, a query, or a fragment. It is operator configuration, not an OCC
+API endpoint, and is never probed by the provider. Disabled instances return
+before reading optional settings, so an invalid `agentUrl` does not prevent
+their catalog-cleanup mutation.
+The HTTP client disables automatic redirect following and rejects every 3xx
+response before issuing another request; a redirect target therefore cannot
+receive the service key. No secret, request header, or raw response object is
+included in a log or catalog entity.
 
 **Alternatives:** Browser-side calls were rejected because they would expose
 the OCC key. Disabling TLS certificate verification was rejected because it
@@ -154,9 +158,9 @@ defaulting to `default`. On each refresh, call `GET /namespaces`, require
 exactly one namespace with that exact name across all statuses, and require
 that namespace to have `status: ready` before calling
 `GET /namespaces/{namespaceId}/agents`. Do not persist namespace IDs between
-runs. When chat links are enabled, read only the installation ID from
-`GET /installation`; failure of that optional lookup omits links but does not
-block importing agents.
+runs. Do not make an additional OCC request to create a browser-chat link; the
+link uses optional operator configuration and does not depend on an
+installation ID.
 
 Do not call the agent detail, configuration, native-admin status, or chat
 endpoints. If multiple namespaces are needed, configure independent provider
@@ -259,27 +263,27 @@ are entity data and can be copied. Automatically renaming a colliding entity
 was rejected because it would make catalog identity depend on which source
 synchronized first.
 
-### D7 — Add the OCC console link and an optional chat link
+### D7 — Add the OCC console link and an optional configured agent URL
 
-**Choice:** Always put an `OpenClaw console/login` link first in `metadata.links`
-using the OCC origin (scheme and authority) followed by `/console`; do not
-carry a path prefix from `occApiBaseUrl` into the console URL. When
-`nativeAdminDomain` is configured and an agent's OCC status is `active`, append
-an optional `OpenClaw chat (log in via console link above first)` link using
-the existing model catalog provider's host formula and the Backstage entity
-schema. Compute its host label from the first 32 lowercase hex characters of
-`SHA-256(installationId + NUL + namespaceId + NUL + agentId)`, then use
-`https://agent-<digest>.<nativeAdminDomain>/`.
+**Choice:** Always put an `OpenClaw console/login` link first in
+`metadata.links` using the OCC origin (scheme and authority) followed by
+`/console`; do not carry a path prefix from `occApiBaseUrl` into the console
+URL. If the provider instance has a valid `agentUrl` and an OCC agent's status
+is `active`, append an `OpenClaw chat (log in via console link above first)`
+link whose URL is the normalized configured value. All active agents from one
+provider instance share that URL. If `agentUrl` is omitted, each entity has
+only the console link. Non-active agents never receive the browser link.
 
-Do not probe the generated host. OCC installations create per-agent Routes,
-and users need an authenticated OpenClaw browser session; the catalog link is
-informational and its availability depends on deployment setup. Missing chat
-link prerequisites do not block entity import or remove the console link.
+Do not derive the agent host from installation, namespace, or agent IDs, and
+do not probe the configured URL. OCC does not return a browser URL in its agent
+records, and deployments can expose different routes. The link is an optional
+operator-supplied workaround; it does not affect entity import or snapshot
+success.
 
-**Alternatives:** Calling the native-admin status endpoint was rejected because
-it requires a browser session rather than the backend service key. Probing the
-derived chat host was rejected because the per-agent Route may not exist and
-availability depends on the user's browser session.
+**Alternatives:** Deriving the historical `agent-<hash>` host was rejected
+because some deployments instead expose the authenticated control UI under a
+different host and path. Calling the native-admin status endpoint was rejected
+because it requires a browser session rather than the backend service key.
 
 ### D8 — Disable catalog import without deleting OCC agents
 
@@ -287,10 +291,11 @@ availability depends on the user's browser session.
 to `true`. When false, register the instance long enough to submit an empty
 full mutation for its stable location key, then do not call OCC or schedule
 refreshes. A disabled entry needs only its keyed instance ID; it does not
-require a usable OCC URL, service key, namespace, or schedule. Empty
-environment-variable substitutions for the optional OCC URL or key are treated
-as absent, following the workspace `ConfigReader` convention, so they do not
-prevent disabled cleanup.
+require a usable OCC URL, service key, namespace, `agentUrl`, or schedule, and
+it does not validate optional settings. Empty environment-variable
+substitutions for the optional OCC URL or key are treated as absent, following
+the workspace `ConfigReader` convention, so they do not prevent disabled
+cleanup.
 
 Operators disable an instance and allow that empty mutation to complete before
 removing the provider configuration or module. This deletes only entities
@@ -332,7 +337,7 @@ catalog entities after a failed refresh.
 | The bootstrap OCC key may grant broad permissions.                                         | Use a dedicated least-privilege service key and keep it in backend secret configuration only.                                                                      |
 | Private CA trust differs across development and OCP environments.                          | Document the CA bundle setup and retain normal TLS certificate verification.                                                                                       |
 | Ephemeral deployments can replace namespace and agent IDs.                                 | Resolve namespace IDs every refresh and keep identity scoped to the current OCC IDs; replacement deployments may produce new catalog identities.                   |
-| A computed browser-chat URL may not have a Route or authenticated browser session.         | Make links optional, emit them only for active agents, and do not treat link availability as sync success.                                                         |
+| A configured browser-chat URL may not exist or may require a browser session.              | Make links optional, emit them only for active agents, and do not treat link availability as sync success.                                                         |
 | Full mutation can delete entities if an incomplete response is mistaken for an empty list. | Validate the namespace state, response envelope, and every projected agent before mutation; only a successful empty array is authoritative empty state.            |
 | Backstage does not return per-entity ownership conflicts from provider mutations.          | Use deterministic provider-scoped identity, preserve foreign-owned entities according to catalog behavior, and document backend logs as the sync-freshness signal. |
 
@@ -349,9 +354,8 @@ entities through the catalog's supported entity-management path.
 
 ## Open Questions
 
-- Confirm the minimum OCC service-key permissions for `GET /namespaces`,
-  `GET /namespaces/{namespaceId}/agents`, and optional `GET /installation` on
-  the target OpenClaw Enterprise deployment. Without installation-read access,
-  the provider still works but omits chat links.
+- Confirm that each target deployment's configured `agentUrl` reaches the
+  intended agent UI and that the console login establishes the browser session
+  required by that URL. The provider does not verify the configured link.
 - Confirm that the target RHDH catalog UI renders `metadata.links` as the
   desired browser-chat link.

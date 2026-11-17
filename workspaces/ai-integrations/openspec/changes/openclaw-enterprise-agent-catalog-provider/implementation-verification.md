@@ -16,10 +16,12 @@ integration tests passed (2 suites, 8 tests), `yarn tsc --pretty false`
 passed, and `git diff --check` passed. The backend was not restarted as part
 of this verification; catalog visibility still awaits the user's next run.
 
-For the console/login link update, the focused mapper suite passed (1 suite,
-7 tests), strict OpenSpec validation passed, and Prettier passed. The mapper
-coverage confirms the console link uses the OCC origin, remains for inactive
-agents and missing installation IDs, and precedes the chat link when available.
+For the original console/login link implementation, the focused mapper suite
+passed (1 suite, 7 tests), strict OpenSpec validation passed, and Prettier
+passed. That implementation's mapper coverage confirmed the console link used
+the OCC origin, remained for inactive agents and missing installation IDs,
+and preceded the chat link when available. The configured agent URL follow-up
+below replaces the installation-ID behavior.
 
 After updating the visible chat-link title and the provider test expectation,
 `yarn test --watchAll=false` passed across all 18 projects: 94 suites, 2,023
@@ -39,3 +41,11 @@ tests that bind local servers; the approved rerun completed successfully.
 
 The generated OCC declarations were also verified against the pinned OpenAPI
 document by checksum and reproducible generation during package setup.
+
+## Configured agent URL follow-up
+
+The provider now accepts an optional HTTPS `agentUrl` and uses it for active
+agents instead of deriving an `agent-<hash>` host or requesting the OCC
+installation endpoint. The local `app-config.yaml` points to the currently
+working `/new` route. This follow-up has not been tested or type-checked yet;
+the user will run the backend and verify the catalog links before any commit.

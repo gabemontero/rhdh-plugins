@@ -17,7 +17,6 @@
 import {
   OccResponseValidationError,
   validateAgentResponse,
-  validateInstallationResponse,
   validateNamespaceResponse,
 } from './occ-response-validation';
 
@@ -106,7 +105,6 @@ describe('validateNamespaceResponse', () => {
     ).toThrow(OccResponseValidationError);
   });
 });
-
 describe('validateAgentResponse', () => {
   it('returns only allowlisted fields and ignores unknown configuration fields', () => {
     const value = {
@@ -260,21 +258,5 @@ describe('validateAgentResponse', () => {
     }
     expect(failure?.message).toBe('OCC agent response is invalid');
     expect(failure?.message).not.toContain(secret);
-  });
-});
-
-describe('validateInstallationResponse', () => {
-  it('returns only the validated installation ID', () => {
-    expect(
-      validateInstallationResponse({
-        data: {
-          id: 'ins_01234567-89ab-4def-8123-456789abcdef',
-          name: 'Example Installation',
-          createdAt,
-          privateConfiguration: 'not returned',
-        },
-        meta: { requestId },
-      }),
-    ).toBe('ins_01234567-89ab-4def-8123-456789abcdef');
   });
 });

@@ -32,8 +32,6 @@ import { OccResponseValidationError } from './occ-response-validation';
 
 const namespaceId = 'ns_01234567-89ab-4def-8123-456789abcdef';
 const agentId = 'agt_01234567-89ab-4def-8123-456789abcdef';
-const installationId = 'ins_01234567-89ab-4def-8123-456789abcdef';
-
 const config: EnabledOpenClawAgentProviderConfig = {
   id: 'staging',
   enabled: true,
@@ -73,7 +71,6 @@ function createHarness(clientOverrides: Partial<OpenClawAgentClient> = {}) {
   const client: OpenClawAgentClient = {
     getNamespaces: jest.fn().mockResolvedValue([namespace()]),
     getAgents: jest.fn().mockResolvedValue([agent()]),
-    getInstallationId: jest.fn().mockResolvedValue(installationId),
     ...clientOverrides,
   };
   const applyMutation = jest.fn().mockResolvedValue(undefined);
@@ -288,38 +285,6 @@ describe('OpenClawAgentEntityProvider', () => {
     // not claim to adopt, alter, or report a conflicting foreign entity.
     expect(harness.logger.warn).not.toHaveBeenCalledWith(
       expect.stringContaining('ownership conflict'),
-    );
-  });
-
-  it('treats installation lookup errors as optional and keeps only the console link', async () => {
-    const harness = createHarness({
-      getInstallationId: jest
-        .fn()
-        .mockRejectedValue(new Error('unauthorized with secret-service-key')),
-    });
-    const linkedConfig = {
-      ...config,
-      nativeAdminDomain: 'admin.example.test',
-    };
-    const provider = new OpenClawAgentEntityProvider({
-      config: linkedConfig,
-      client: harness.client,
-      logger: harness.logger,
-      taskRunner: harness.taskRunner,
-    });
-    await provider.connect(harness.connection);
-
-    await provider.refresh();
-
-    const mutation = harness.applyMutation.mock.calls[0][0];
-    expect(mutation.entities[0].entity.metadata.links).toEqual([
-      {
-        url: 'https://occ.example.test/console',
-        title: 'OpenClaw console/login',
-      },
-    ]);
-    expect(harness.logger.warn).toHaveBeenCalledWith(
-      'OCC installation lookup failed; importing agents without chat links',
     );
   });
 

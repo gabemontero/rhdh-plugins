@@ -28,8 +28,7 @@ export interface OpenClawAgentMappingOptions {
   occApiBaseUrl: string;
   defaultOwner: string;
   defaultLifecycle: string;
-  nativeAdminDomain?: string;
-  installationId?: string;
+  agentUrl?: string;
 }
 
 /**
@@ -86,15 +85,9 @@ export function mapOpenClawAgent(
     },
   };
 
-  if (
-    agent.status === 'active' &&
-    options.nativeAdminDomain &&
-    options.installationId
-  ) {
+  if (agent.status === 'active' && options.agentUrl) {
     links.push({
-      url: `https://agent-${sha256(
-        `${options.installationId}\0${agent.namespaceId}\0${agent.id}`,
-      ).slice(0, 32)}.${options.nativeAdminDomain}/`,
+      url: options.agentUrl,
       title: 'OpenClaw chat (log in via console link above first)',
     });
   }

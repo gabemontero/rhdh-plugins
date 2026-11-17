@@ -81,7 +81,7 @@ export interface ValidatedOccNamespace {
 
 /** A response that failed the pinned OCC contract checks. */
 export class OccResponseValidationError extends Error {
-  constructor(context: 'namespace' | 'agent' | 'installation') {
+  constructor(context: 'namespace' | 'agent') {
     super(`OCC ${context} response is invalid`);
     this.name = 'OccResponseValidationError';
   }
@@ -150,29 +150,6 @@ export function validateAgentResponse(
     seenAgentIds.add(agent.id);
     return agent;
   });
-}
-
-/**
- * Validates the installation response and returns only the installation ID.
- */
-export function validateInstallationResponse(response: unknown): string {
-  if (!isRecord(response) || !isRecord(response.data)) {
-    throw new OccResponseValidationError('installation');
-  }
-  validateMeta(response.meta, 'installation');
-
-  const { id, name, createdAt } = response.data;
-  if (
-    !isPattern(
-      id,
-      /^ins_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    ) ||
-    !isOccName(name) ||
-    !isOpenApiDateTime(createdAt)
-  ) {
-    throw new OccResponseValidationError('installation');
-  }
-  return id;
 }
 
 function validateAgent(
@@ -244,10 +221,7 @@ function validateAgent(
   };
 }
 
-function validateMeta(
-  meta: unknown,
-  context: 'namespace' | 'agent' | 'installation',
-): void {
+function validateMeta(meta: unknown, context: 'namespace' | 'agent'): void {
   if (!isRecord(meta) || !isPattern(meta.requestId, REQUEST_ID_PATTERN)) {
     throw new OccResponseValidationError(context);
   }

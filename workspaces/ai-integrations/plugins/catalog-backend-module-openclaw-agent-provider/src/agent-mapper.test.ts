@@ -21,8 +21,6 @@ import type { ValidatedOccAgent } from './occ-response-validation';
 
 const namespaceId = 'ns_01234567-89ab-4def-8123-456789abcdef';
 const agentId = 'agt_01234567-89ab-4def-8123-456789abcdef';
-const installationId = 'ins_01234567-89ab-4def-8123-456789abcdef';
-
 const baseOptions = {
   providerId: 'staging',
   catalogNamespace: 'default',
@@ -160,23 +158,18 @@ describe('mapOpenClawAgent', () => {
     ).toBe('url:https://occ.example.test');
   });
 
-  it('puts the console link before an optional chat link', () => {
+  it('uses a configured active-agent URL after the console link', () => {
     const mapped = mapOpenClawAgent(agent(), {
       ...baseOptions,
-      nativeAdminDomain: 'admin.example.test',
-      installationId,
+      agentUrl: 'https://oce.example.test/new',
     });
-    const digest = createHash('sha256')
-      .update(`${installationId}\0${namespaceId}\0${agentId}`)
-      .digest('hex')
-      .slice(0, 32);
     expect(mapped.metadata.links).toEqual([
       {
         url: 'https://occ.example.test/console',
         title: 'OpenClaw console/login',
       },
       {
-        url: `https://agent-${digest}.admin.example.test/`,
+        url: 'https://oce.example.test/new',
         title: 'OpenClaw chat (log in via console link above first)',
       },
     ]);
@@ -184,8 +177,7 @@ describe('mapOpenClawAgent', () => {
     expect(
       mapOpenClawAgent(agent({ status: 'deleting' }), {
         ...baseOptions,
-        nativeAdminDomain: 'admin.example.test',
-        installationId,
+        agentUrl: 'https://oce.example.test/new',
       }).metadata.links,
     ).toEqual([
       {
@@ -196,7 +188,7 @@ describe('mapOpenClawAgent', () => {
     expect(
       mapOpenClawAgent(agent(), {
         ...baseOptions,
-        nativeAdminDomain: 'admin.example.test',
+        agentUrl: undefined,
       }).metadata.links,
     ).toEqual([
       {

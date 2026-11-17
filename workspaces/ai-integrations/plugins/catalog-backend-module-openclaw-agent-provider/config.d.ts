@@ -66,11 +66,12 @@ export interface Config {
            */
           defaultLifecycle?: string;
           /**
-           * Native-admin hostname used to construct optional agent chat links.
-           * Supply a hostname only, without scheme, port, or path.
+           * Absolute HTTPS URL used for optional browser links to active
+           * agents. The same URL is used for every active agent in this
+           * provider instance. Omit to expose only the OCC console link.
            * @visibility backend
            */
-          nativeAdminDomain?: string;
+          agentUrl?: string;
           /**
            * Backstage scheduler definition. Defaults to ten-minute frequency
            * and timeout with an immediate initial run.

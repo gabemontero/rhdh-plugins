@@ -18,7 +18,6 @@ import createClient from 'openapi-fetch';
 import type { paths } from './generated/occ-api';
 import {
   validateAgentResponse,
-  validateInstallationResponse,
   validateNamespaceResponse,
 } from './occ-response-validation';
 import type {
@@ -122,14 +121,6 @@ export class OccClient {
       }),
     );
     return validateAgentResponse(response, namespaceId);
-  }
-
-  /** Reads and validates the installation ID for optional chat-link creation. */
-  async getInstallationId(): Promise<string> {
-    const response = await this.request(signal =>
-      this.client.GET('/installation', { signal }),
-    );
-    return validateInstallationResponse(response);
   }
 
   private async request(

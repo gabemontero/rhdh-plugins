@@ -179,14 +179,10 @@ failure) of a required namespace or agent-list request, or response validation,
 SHALL preserve the last successfully published entities and SHALL be reported
 through a sanitized backend sync error. The provider SHALL NOT republish retained
 entities solely to attach a sync-freshness annotation; freshness is not shown on
-the catalog entity.
-Failure of the optional `GET
-/installation` lookup, including an authorization failure, SHALL omit chat
-links but SHALL NOT prevent mutation of a complete valid agent snapshot. A
-complete valid empty agent list SHALL remove the entities owned by that
-provider instance. Each configured provider instance ID SHALL be globally
-unique among providers emitting AiResource agents, and its stable provider
-identity and location key SHALL be
+the catalog entity. A complete valid empty agent list SHALL remove the entities
+owned by that provider instance. Each configured provider instance ID SHALL be
+globally unique among providers emitting AiResource agents, and its stable
+provider identity and location key SHALL be
 `OpenClawAgentProvider:<providerInstanceId>`.
 Provider instances SHALL therefore have distinct location keys.
 
@@ -297,31 +293,44 @@ NOT call OCC, and SHALL NOT start a refresh schedule.
 Each imported OCC agent SHALL have a `metadata.links` entry titled
 `OpenClaw console/login` first in the array. Its URL SHALL be the normalized
 OCC origin (scheme and authority) followed by `/console`; a path prefix on
-`occApiBaseUrl` SHALL NOT be included. When a valid native-admin domain is
-configured, the provider SHALL retrieve the installation ID from
-`GET /installation` and append an `OpenClaw chat (log in via console link
-above first)` link for each OCC agent whose status is `active`. The chat URL
-SHALL use the OpenClaw Enterprise host derivation from the design. If the
-domain or installation ID is unavailable, or the agent is not active, the
-entity SHALL omit only the chat link without preventing its catalog import.
-Link generation SHALL NOT probe the agent host.
+`occApiBaseUrl` SHALL NOT be included. For an enabled provider instance, an
+optional `agentUrl` configuration value SHALL be an absolute HTTPS URL without
+credentials, query, or fragment; it MAY include a path. When `agentUrl` is
+configured, the provider SHALL append
+an `OpenClaw chat (log in via console link above first)` link for each OCC
+agent whose status is `active`, using its normalized value. All active
+agents from that provider instance SHALL use the same configured URL. If
+`agentUrl` is omitted, or an agent is not active, the entity SHALL have only
+the OCC console/login link. The provider SHALL NOT derive or probe the agent
+URL, and an unavailable configured link SHALL NOT prevent catalog import.
 
-#### Scenario: Active agent has chat-link configuration
+#### Scenario: Active agent has a configured agent URL
 
-- **WHEN** an imported agent is active and the installation ID and valid
-  native-admin domain are available
+- **WHEN** an imported agent is active and its provider instance has a valid
+  `agentUrl`
 - **THEN** its `metadata.links` begins with the OCC console/login link and then
-  includes the derived browser-chat URL
+  includes the configured browser URL with the chat-link title
 
-#### Scenario: Chat-link prerequisites are unavailable
+#### Scenario: Agent URL is omitted
 
-- **WHEN** no native-admin domain is configured, the installation lookup fails,
-  including an authorization failure, or an agent is not active
-- **THEN** its entity is still imported with only the OCC console/login link
+- **WHEN** no `agentUrl` is configured for the provider instance
+- **THEN** every imported entity has only the OCC console/login link
 
-#### Scenario: Optional installation lookup is unauthorized
+#### Scenario: Agent is not active
 
-- **WHEN** the required namespace and agent reads succeed but `GET
-/installation` is unauthorized
-- **THEN** the provider imports the agents with their OCC console/login links
-  and without chat links
+- **WHEN** an imported agent is not active, even though `agentUrl` is
+  configured
+- **THEN** its entity has only the OCC console/login link
+
+#### Scenario: Enabled instance has an invalid agent URL
+
+- **WHEN** an enabled instance has an `agentUrl` that is not an absolute HTTPS
+  URL or contains credentials, a query, or a fragment
+- **THEN** provider configuration is rejected before the provider starts
+
+#### Scenario: Disabled instance ignores an invalid agent URL
+
+- **WHEN** an instance has `enabled: false` and its optional `agentUrl` is
+  invalid
+- **THEN** the provider ignores that setting and submits its empty cleanup
+  mutation without calling OCC

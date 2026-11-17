@@ -40,7 +40,6 @@ import { OccResponseValidationError } from './occ-response-validation';
 export interface OpenClawAgentClient {
   getNamespaces(): Promise<ValidatedOccNamespace[]>;
   getAgents(namespaceId: string): Promise<ValidatedOccAgent[]>;
-  getInstallationId(): Promise<string>;
 }
 
 /** Safe internal marker for a complete snapshot that cannot be projected. */
@@ -118,19 +117,6 @@ export class OpenClawAgentEntityProvider implements EntityProvider {
     const namespace = matches[0];
     const agents = await this.client.getAgents(namespace.id);
 
-    let installationId: string | undefined;
-    if (config.nativeAdminDomain) {
-      try {
-        installationId = await this.client.getInstallationId();
-      } catch {
-        // Chat links are optional and do not affect an otherwise complete
-        // agent snapshot. Never log raw OCC responses or request details.
-        this.logger.warn(
-          'OCC installation lookup failed; importing agents without chat links',
-        );
-      }
-    }
-
     const entities = agents.map(agent =>
       mapOpenClawAgent(agent, {
         providerId: config.id,
@@ -138,8 +124,7 @@ export class OpenClawAgentEntityProvider implements EntityProvider {
         occApiBaseUrl: config.occApiBaseUrl,
         defaultOwner: config.defaultOwner,
         defaultLifecycle: config.defaultLifecycle,
-        nativeAdminDomain: config.nativeAdminDomain,
-        installationId,
+        agentUrl: config.agentUrl,
       }),
     );
 

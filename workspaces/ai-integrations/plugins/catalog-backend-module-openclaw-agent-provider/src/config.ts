@@ -44,7 +44,7 @@ export interface EnabledOpenClawAgentProviderConfig {
   catalogNamespace: string;
   defaultOwner: string;
   defaultLifecycle: string;
-  nativeAdminDomain?: string;
+  agentUrl?: string;
   schedule: SchedulerServiceTaskScheduleDefinition;
 }
 
@@ -114,14 +114,11 @@ function readOpenClawAgentProviderConfig(
     safeGetOptionalString(config, 'namespaceName')?.trim() || 'default';
   const catalogNamespace =
     safeGetOptionalString(config, 'catalogNamespace')?.trim() || 'default';
-  const nativeAdminDomain = safeGetOptionalString(config, 'nativeAdminDomain');
+  const configuredAgentUrl = safeGetOptionalString(config, 'agentUrl');
 
-  let normalizedNativeAdminDomain: string | undefined;
-  if (nativeAdminDomain !== undefined && nativeAdminDomain.trim() !== '') {
-    normalizedNativeAdminDomain = validateNativeAdminDomain(
-      nativeAdminDomain.trim(),
-      providerPath,
-    );
+  let agentUrl: string | undefined;
+  if (configuredAgentUrl !== undefined && configuredAgentUrl.trim() !== '') {
+    agentUrl = validateAgentUrl(configuredAgentUrl.trim(), providerPath);
   }
 
   const schedule = config.has('schedule')
@@ -148,7 +145,7 @@ function readOpenClawAgentProviderConfig(
     catalogNamespace,
     defaultOwner,
     defaultLifecycle,
-    nativeAdminDomain: normalizedNativeAdminDomain,
+    agentUrl,
     schedule,
   };
 }
@@ -183,36 +180,26 @@ function safeGetOptionalString(
   }
 }
 
-function validateNativeAdminDomain(
-  domain: string,
-  providerPath: string,
-): string {
-  const label = '[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?';
-  const hostnamePattern = new RegExp(`^(?=.{1,253}$)${label}(?:\\.${label})*$`);
-
-  if (!hostnamePattern.test(domain)) {
-    throw new InputError(
-      `${providerPath}: nativeAdminDomain must be a valid hostname without scheme, port, or path`,
-    );
-  }
-
+function validateAgentUrl(value: string, providerPath: string): string {
   try {
-    const parsed = new URL(`https://${domain}`);
+    const parsed = new URL(value);
     if (
+      !/^https:\/\//i.test(value) ||
+      parsed.protocol !== 'https:' ||
       !parsed.hostname ||
-      parsed.pathname !== '/' ||
+      value.includes('?') ||
+      value.includes('#') ||
       parsed.search ||
       parsed.hash ||
       parsed.username ||
-      parsed.password ||
-      parsed.port
+      parsed.password
     ) {
-      throw new Error('invalid hostname');
+      throw new Error('invalid URL');
     }
-    return parsed.hostname.toLowerCase();
+    return parsed.toString();
   } catch {
     throw new InputError(
-      `${providerPath}: nativeAdminDomain must be a valid hostname without scheme, port, or path`,
+      `${providerPath}: agentUrl must be an absolute HTTPS URL without credentials, query, or fragment`,
     );
   }
 }

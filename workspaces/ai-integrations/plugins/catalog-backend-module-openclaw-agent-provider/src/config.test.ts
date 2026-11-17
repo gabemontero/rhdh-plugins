@@ -130,22 +130,23 @@ describe('readOpenClawAgentProviderConfigs', () => {
     ).toEqual([{ id: 'development', enabled: false }]);
   });
 
-  it('validates the native-admin domain as a hostname', () => {
+  it('validates and normalizes an optional active-agent URL', () => {
     const [provider] = readConfig(
-      enabledInstance({ nativeAdminDomain: 'OCE.example.com' }),
+      enabledInstance({ agentUrl: 'https://OCE.example.com/new' }),
     );
     expect(provider).toMatchObject({
-      nativeAdminDomain: 'oce.example.com',
+      agentUrl: 'https://oce.example.com/new',
     });
 
-    for (const nativeAdminDomain of [
-      'https://oce.example.com',
-      'oce.example.com:8443',
-      'oce.example.com/path',
-      'oce example.com',
+    for (const agentUrl of [
+      'http://oce.example.com/new',
+      'oce.example.com/new',
+      'https://user:pass@oce.example.com/new',
+      'https://oce.example.com/new?next=/chat',
+      'https://oce.example.com/new#fragment',
     ]) {
-      expect(() => readConfig(enabledInstance({ nativeAdminDomain }))).toThrow(
-        /nativeAdminDomain must be a valid hostname/,
+      expect(() => readConfig(enabledInstance({ agentUrl }))).toThrow(
+        /agentUrl must be an absolute HTTPS URL/,
       );
     }
   });

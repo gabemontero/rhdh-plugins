@@ -49,7 +49,7 @@ catalog:
         catalogNamespace: default
         defaultOwner: group:ai-platform
         defaultLifecycle: production
-        nativeAdminDomain: ${OCC_NATIVE_ADMIN_DOMAIN}
+        agentUrl: ${OCC_AGENT_URL}
         schedule:
           frequency:
             minutes: 10
@@ -71,12 +71,15 @@ copied to every imported entity; OCC runtime state does not determine catalog
 lifecycle. Every imported agent has an `OpenClaw console/login` link first in
 `metadata.links`, pointing to the OCC origin plus `/console`. A path prefix on
 `occApiBaseUrl` is not included in the console URL.
-`nativeAdminDomain` is optional and accepts a hostname only, without a scheme,
-port, or path. When configured, active agents receive a derived browser-chat
-link after the console link if OCC returns the installation ID. Its title
-reminds users to log in through the console link above first. A failed
-installation lookup omits only the chat link and does not block the agent
-import.
+For enabled entries, `agentUrl` is optional and must be an absolute HTTPS URL
+without credentials, query, or fragment; a path such as `/new` is allowed.
+When configured, active agents receive this normalized URL as a browser-chat
+link after the console link. All active agents from one provider instance share
+the configured URL. Its title reminds users to log in through the console link
+above first. When `agentUrl` is omitted, entities have only the console link.
+The provider does not derive or check the browser URL, and link availability
+does not affect agent import. Disabled entries skip optional-setting
+validation, so `agentUrl` does not affect their cleanup mutation.
 
 Without a `schedule` block, the provider uses a ten-minute frequency,
 ten-minute timeout, and an immediate initial run. Backstage scheduler schedule

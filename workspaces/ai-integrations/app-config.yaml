@@ -195,7 +195,8 @@ catalog:
         catalogNamespace: default
         defaultOwner: group:default/team-ml-platform
         defaultLifecycle: production
-        nativeAdminDomain: apps.gmontero422.rhdh-pai.devfile-ci.com
+        # Current browser route for this OCE deployment; omit for console only.
+        # agentUrl: https://oc-ui-58813a8b28ea.apps.gmontero422.rhdh-pai.devfile-ci.com/new
         schedule:
           frequency: { minutes: 1 }
           timeout: { minutes: 2 }
